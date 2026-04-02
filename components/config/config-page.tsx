@@ -1,6 +1,5 @@
 'use client'
 
-import { useState, useEffect } from 'react'
 import { Settings, Server, LayoutList, ArrowDownCircle, Zap } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ServidoresList } from '@/components/config/servidores-list'
@@ -8,30 +7,44 @@ import { PlanosList } from '@/components/config/planos-list'
 import { SaidasRapidasList } from '@/components/config/saidas-rapidas-list'
 import { AtivacoesList } from '@/components/config/ativacoes-list'
 import type { Servidor, PlanoEntrada, SaidaRapida, ActivationProduct } from '@/lib/types'
-import {
-  getServidores,
-  getPlanos,
-  getSaidasRapidas,
-} from '@/lib/config-storage'
-import { getActivationProducts } from '@/lib/activation-storage'
 
-export function ConfigPage() {
-  const [servidores, setServidores] = useState<Servidor[]>([])
-  const [planos, setPlanos] = useState<PlanoEntrada[]>([])
-  const [saidas, setSaidas] = useState<SaidaRapida[]>([])
-  const [ativacoes, setAtivacoes] = useState<ActivationProduct[]>([])
-  const [mounted, setMounted] = useState(false)
+interface ConfigPageProps {
+  servidores: Servidor[]
+  planos: PlanoEntrada[]
+  saidasRapidas: SaidaRapida[]
+  activationProducts: ActivationProduct[]
+  onAddServidor: (servidor: Omit<Servidor, 'id'>) => Promise<Servidor | null>
+  onUpdateServidor: (servidor: Servidor) => Promise<Servidor | null>
+  onDeleteServidor: (id: string) => Promise<boolean>
+  onAddPlano: (plano: Omit<PlanoEntrada, 'id'>) => Promise<PlanoEntrada | null>
+  onUpdatePlano: (plano: PlanoEntrada) => Promise<PlanoEntrada | null>
+  onDeletePlano: (id: string) => Promise<boolean>
+  onAddSaidaRapida: (saida: Omit<SaidaRapida, 'id'>) => Promise<SaidaRapida | null>
+  onUpdateSaidaRapida: (saida: SaidaRapida) => Promise<SaidaRapida | null>
+  onDeleteSaidaRapida: (id: string) => Promise<boolean>
+  onAddActivationProduct: (product: Omit<ActivationProduct, 'id'>) => Promise<ActivationProduct | null>
+  onUpdateActivationProduct: (product: ActivationProduct) => Promise<ActivationProduct | null>
+  onDeleteActivationProduct: (id: string) => Promise<boolean>
+}
 
-  useEffect(() => {
-    setServidores(getServidores())
-    setPlanos(getPlanos())
-    setSaidas(getSaidasRapidas())
-    setAtivacoes(getActivationProducts())
-    setMounted(true)
-  }, [])
-
-  if (!mounted) return null
-
+export function ConfigPage({
+  servidores,
+  planos,
+  saidasRapidas,
+  activationProducts,
+  onAddServidor,
+  onUpdateServidor,
+  onDeleteServidor,
+  onAddPlano,
+  onUpdatePlano,
+  onDeletePlano,
+  onAddSaidaRapida,
+  onUpdateSaidaRapida,
+  onDeleteSaidaRapida,
+  onAddActivationProduct,
+  onUpdateActivationProduct,
+  onDeleteActivationProduct,
+}: ConfigPageProps) {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
@@ -67,19 +80,42 @@ export function ConfigPage() {
         </TabsList>
 
         <TabsContent value="servidores" className="mt-6">
-          <ServidoresList servidores={servidores} onChange={setServidores} />
+          <ServidoresList 
+            servidores={servidores} 
+            onAdd={onAddServidor}
+            onUpdate={onUpdateServidor}
+            onDelete={onDeleteServidor}
+          />
         </TabsContent>
 
         <TabsContent value="planos" className="mt-6">
-          <PlanosList planos={planos} servidores={servidores} onChange={setPlanos} />
+          <PlanosList 
+            planos={planos} 
+            servidores={servidores} 
+            onAdd={onAddPlano}
+            onUpdate={onUpdatePlano}
+            onDelete={onDeletePlano}
+          />
         </TabsContent>
 
         <TabsContent value="saidas" className="mt-6">
-          <SaidasRapidasList saidas={saidas} servidores={servidores} onChange={setSaidas} />
+          <SaidasRapidasList 
+            saidas={saidasRapidas} 
+            servidores={servidores} 
+            onAdd={onAddSaidaRapida}
+            onUpdate={onUpdateSaidaRapida}
+            onDelete={onDeleteSaidaRapida}
+          />
         </TabsContent>
 
         <TabsContent value="ativacoes" className="mt-6">
-          <AtivacoesList products={ativacoes} servidores={servidores} onChange={setAtivacoes} />
+          <AtivacoesList 
+            products={activationProducts} 
+            servidores={servidores} 
+            onAdd={onAddActivationProduct}
+            onUpdate={onUpdateActivationProduct}
+            onDelete={onDeleteActivationProduct}
+          />
         </TabsContent>
       </Tabs>
     </div>

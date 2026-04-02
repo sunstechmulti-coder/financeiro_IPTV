@@ -25,12 +25,13 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import type { Servidor } from '@/lib/types'
-import { addServidor, updateServidor, deleteServidor } from '@/lib/config-storage'
 import { formatCurrency } from '@/lib/format'
 
 interface ServidoresListProps {
   servidores: Servidor[]
-  onChange: (list: Servidor[]) => void
+  onAdd: (servidor: Omit<Servidor, 'id'>) => Promise<Servidor | null>
+  onUpdate: (servidor: Servidor) => Promise<Servidor | null>
+  onDelete: (id: string) => Promise<boolean>
 }
 
 const EMPTY: Omit<Servidor, 'id'> = {
@@ -40,11 +41,12 @@ const EMPTY: Omit<Servidor, 'id'> = {
   permiteVendaFracionada: false,
 }
 
-export function ServidoresList({ servidores, onChange }: ServidoresListProps) {
+export function ServidoresList({ servidores, onAdd, onUpdate, onDelete }: ServidoresListProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editForm, setEditForm] = useState<Omit<Servidor, 'id'>>(EMPTY)
   const [showAdd, setShowAdd] = useState(false)
   const [addForm, setAddForm] = useState<Omit<Servidor, 'id'>>(EMPTY)
+  const [loading, setLoading] = useState(false)
 
   const handleEdit = (s: Servidor) => {
     setEditingId(s.id)
@@ -56,22 +58,30 @@ export function ServidoresList({ servidores, onChange }: ServidoresListProps) {
     })
   }
 
-  const handleEditSave = (id: string) => {
+  const handleEditSave = async (id: string) => {
     if (!editForm.nome.trim()) return
-    onChange(updateServidor({ id, ...editForm }))
+    setLoading(true)
+    await onUpdate({ id, ...editForm })
+    setLoading(false)
     setEditingId(null)
   }
 
   const handleEditCancel = () => setEditingId(null)
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!addForm.nome.trim()) return
-    onChange(addServidor(addForm))
+    setLoading(true)
+    await onAdd(addForm)
+    setLoading(false)
     setAddForm(EMPTY)
     setShowAdd(false)
   }
 
-  const handleDelete = (id: string) => onChange(deleteServidor(id))
+  const handleDelete = async (id: string) => {
+    setLoading(true)
+    await onDelete(id)
+    setLoading(false)
+  }
 
   return (
     <div className="space-y-4">
@@ -82,7 +92,7 @@ export function ServidoresList({ servidores, onChange }: ServidoresListProps) {
             Gerencie os servidores, custos e saldo de créditos.
           </p>
         </div>
-        <Button size="sm" onClick={() => setShowAdd(true)}>
+        <Button size="sm" onClick={() => setShowAdd(true)} disabled={loading}>
           <Plus className="mr-2 h-4 w-4" />
           Adicionar
         </Button>
@@ -110,6 +120,7 @@ export function ServidoresList({ servidores, onChange }: ServidoresListProps) {
                     onChange={(e) => setAddForm({ ...addForm, nome: e.target.value })}
                     className="h-8"
                     autoFocus
+                    disabled={loading}
                   />
                 </TableCell>
                 <TableCell>
@@ -118,53 +129,35 @@ export function ServidoresList({ servidores, onChange }: ServidoresListProps) {
                     step="0.01"
                     placeholder="0,00"
                     value={addForm.custoUnitario || ''}
-                    onChange={(e) =>
-                      setAddForm({ ...addForm, custoUnitario: parseFloat(e.target.value) || 0 })
-                    }
-                    className="h-8 w-28"
+                    onChange={(e) => setAddForm({ ...addForm, custoUnitario: parseFloat(e.target.value) || 0 })}
+                    className="h-8 w-24"
+                    disabled={loading}
                   />
                 </TableCell>
                 <TableCell className="text-center">
                   <Checkbox
-                    checked={addForm.permiteVendaFracionada ?? false}
-                    onCheckedChange={(v) =>
-                      setAddForm({ ...addForm, permiteVendaFracionada: v === true })
-                    }
+                    checked={addForm.permiteVendaFracionada}
+                    onCheckedChange={(v) => setAddForm({ ...addForm, permiteVendaFracionada: v === true })}
+                    disabled={loading}
                   />
                 </TableCell>
-                <TableCell>
-                  <Input
-                    type="number"
-                    step="0.5"
-                    placeholder="0"
-                    value={addForm.creditsBalance || ''}
-                    onChange={(e) =>
-                      setAddForm({ ...addForm, creditsBalance: parseFloat(e.target.value) || 0 })
-                    }
-                    className="h-8 w-24 ml-auto block"
-                  />
-                </TableCell>
+                <TableCell className="text-right">0</TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">
-                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={handleAdd}>
-                      <Check className="h-4 w-4 text-income" />
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleAdd} disabled={loading}>
+                      <Check className="h-4 w-4 text-green-500" />
                     </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7"
-                      onClick={() => { setShowAdd(false); setAddForm(EMPTY) }}
-                    >
-                      <X className="h-4 w-4 text-muted-foreground" />
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setShowAdd(false); setAddForm(EMPTY) }} disabled={loading}>
+                      <X className="h-4 w-4 text-red-500" />
                     </Button>
                   </div>
                 </TableCell>
               </TableRow>
             )}
 
+            {/* ── Linhas existentes ── */}
             {servidores.map((s) =>
               editingId === s.id ? (
-                /* ── Linha de edição ── */
                 <TableRow key={s.id}>
                   <TableCell>
                     <Input
@@ -172,6 +165,7 @@ export function ServidoresList({ servidores, onChange }: ServidoresListProps) {
                       onChange={(e) => setEditForm({ ...editForm, nome: e.target.value })}
                       className="h-8"
                       autoFocus
+                      disabled={loading}
                     />
                   </TableCell>
                   <TableCell>
@@ -179,107 +173,59 @@ export function ServidoresList({ servidores, onChange }: ServidoresListProps) {
                       type="number"
                       step="0.01"
                       value={editForm.custoUnitario || ''}
-                      onChange={(e) =>
-                        setEditForm({ ...editForm, custoUnitario: parseFloat(e.target.value) || 0 })
-                      }
-                      className="h-8 w-28"
+                      onChange={(e) => setEditForm({ ...editForm, custoUnitario: parseFloat(e.target.value) || 0 })}
+                      className="h-8 w-24"
+                      disabled={loading}
                     />
                   </TableCell>
                   <TableCell className="text-center">
                     <Checkbox
-                      checked={editForm.permiteVendaFracionada ?? false}
-                      onCheckedChange={(v) =>
-                        setEditForm({ ...editForm, permiteVendaFracionada: v === true })
-                      }
+                      checked={editForm.permiteVendaFracionada}
+                      onCheckedChange={(v) => setEditForm({ ...editForm, permiteVendaFracionada: v === true })}
+                      disabled={loading}
                     />
                   </TableCell>
-                  <TableCell>
-                    <Input
-                      type="number"
-                      step="0.5"
-                      value={editForm.creditsBalance ?? 0}
-                      onChange={(e) =>
-                        setEditForm({ ...editForm, creditsBalance: parseFloat(e.target.value) || 0 })
-                      }
-                      className="h-8 w-24 ml-auto block"
-                    />
-                  </TableCell>
+                  <TableCell className="text-right">{editForm.creditsBalance ?? 0}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7"
-                        onClick={() => handleEditSave(s.id)}
-                      >
-                        <Check className="h-4 w-4 text-income" />
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEditSave(s.id)} disabled={loading}>
+                        <Check className="h-4 w-4 text-green-500" />
                       </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7"
-                        onClick={handleEditCancel}
-                      >
-                        <X className="h-4 w-4 text-muted-foreground" />
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleEditCancel} disabled={loading}>
+                        <X className="h-4 w-4 text-red-500" />
                       </Button>
                     </div>
                   </TableCell>
                 </TableRow>
               ) : (
-                /* ── Linha normal ── */
                 <TableRow key={s.id}>
                   <TableCell className="font-medium">{s.nome}</TableCell>
                   <TableCell>{formatCurrency(s.custoUnitario)}</TableCell>
                   <TableCell className="text-center">
-                    {s.permiteVendaFracionada ? (
-                      <span className="text-xs font-medium text-income">Sim</span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    )}
+                    {s.permiteVendaFracionada ? <Check className="mx-auto h-4 w-4 text-green-500" /> : <X className="mx-auto h-4 w-4 text-muted-foreground" />}
                   </TableCell>
-                  <TableCell className="text-right">
-                    <span
-                      className={`font-mono font-semibold tabular-nums ${
-                        (s.creditsBalance ?? 0) > 0 ? 'text-income' : 'text-muted-foreground'
-                      }`}
-                    >
-                      {(s.creditsBalance ?? 0).toLocaleString('pt-BR')}
-                    </span>
-                  </TableCell>
+                  <TableCell className="text-right">{s.creditsBalance ?? 0}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7"
-                        onClick={() => handleEdit(s)}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEdit(s)} disabled={loading}>
+                        <Pencil className="h-4 w-4" />
                       </Button>
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-7 w-7 text-destructive hover:text-destructive"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
+                          <Button variant="ghost" size="icon" className="h-7 w-7" disabled={loading}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
-                            <AlertDialogTitle>Excluir servidor</AlertDialogTitle>
+                            <AlertDialogTitle>Excluir servidor?</AlertDialogTitle>
                             <AlertDialogDescription>
-                              Tem certeza que deseja excluir <strong>{s.nome}</strong>? Os planos
-                              vinculados deixarão de funcionar.
+                              Esta ação não pode ser desfeita. Todos os planos vinculados a este servidor também serão afetados.
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
                             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => handleDelete(s.id)}
-                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                            >
+                            <AlertDialogAction onClick={() => handleDelete(s.id)}>
                               Excluir
                             </AlertDialogAction>
                           </AlertDialogFooter>
@@ -293,7 +239,7 @@ export function ServidoresList({ servidores, onChange }: ServidoresListProps) {
 
             {servidores.length === 0 && !showAdd && (
               <TableRow>
-                <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                   Nenhum servidor cadastrado.
                 </TableCell>
               </TableRow>

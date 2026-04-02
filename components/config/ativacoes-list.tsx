@@ -34,145 +34,145 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
 import type { ActivationProduct, PricingRule, Servidor } from '@/lib/types'
-import {
-  addActivationProduct,
-  updateActivationProduct,
-  deleteActivationProduct,
-} from '@/lib/activation-storage'
 
 interface AtivacoesListProps {
   products: ActivationProduct[]
   servidores: Servidor[]
-  onChange: (list: ActivationProduct[]) => void
+  onAdd: (product: Omit<ActivationProduct, 'id'>) => Promise<ActivationProduct | null>
+  onUpdate: (product: ActivationProduct) => Promise<ActivationProduct | null>
+  onDelete: (id: string) => Promise<boolean>
 }
 
 const formatCurrency = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 
-// Parse comma-separated numbers like "0.5,0.6,0.7"
 function parseCustos(str: string): number[] {
   return str
     .split(',')
-    .map((s) => parseFloat(s.trim()))
-    .filter((n) => !isNaN(n) && n > 0)
+    .map(s => parseFloat(s.trim()))
+    .filter(n => !isNaN(n) && n > 0)
 }
 
-function formatCustos(list: number[]): string {
-  return list.join(', ')
+function formatCustos(arr: number[]): string {
+  return arr.map(n => n.toString()).join(', ')
 }
 
-interface FormState {
+interface ProductForm {
   nome: string
-  validadeMeses: string
-  custosPermitidos: string  // comma-separated
-  linkedServerId: string    // '' = nenhum vínculo
-  // pricing rules as simple pairs
-  rules: Array<{ min: string; max: string; price: string }>
+  validadeMeses: number
+  custosPermitidos: string
+  linkedServerId?: string
+  regrasPreco: PricingRule[]
 }
 
-const EMPTY_FORM: FormState = {
+const EMPTY_FORM: ProductForm = {
   nome: '',
-  validadeMeses: '12',
-  custosPermitidos: '0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9',
-  linkedServerId: '',
-  rules: [
-    { min: '0.5', max: '1.0', price: '20.00' },
-    { min: '1.1', max: '1.9', price: '25.00' },
-  ],
+  validadeMeses: 12,
+  custosPermitidos: '',
+  linkedServerId: undefined,
+  regrasPreco: [],
 }
 
-function productToForm(p: ActivationProduct): FormState {
-  return {
-    nome: p.nome,
-    validadeMeses: String(p.validadeMeses),
-    custosPermitidos: formatCustos(p.custosPermitidos),
-    linkedServerId: p.linkedServerId ?? '',
-    rules: p.regrasPreco.map((r) => ({
-      min: String(r.minCost),
-      max: String(r.maxCost),
-      price: String(r.salePrice),
-    })),
-  }
-}
+const EMPTY_RULE: PricingRule = { minCost: 0, maxCost: 0, salePrice: 0 }
 
-function formToProduct(form: FormState): Omit<ActivationProduct, 'id'> {
-  return {
-    nome: form.nome.trim(),
-    validadeMeses: parseInt(form.validadeMeses) || 12,
-    custosPermitidos: parseCustos(form.custosPermitidos),
-    linkedServerId: form.linkedServerId || undefined,
-    regrasPreco: form.rules
-      .map((r) => ({
-        minCost: parseFloat(r.min) || 0,
-        maxCost: parseFloat(r.max) || 0,
-        salePrice: parseFloat(r.price.replace(',', '.')) || 0,
-      }))
-      .filter((r) => r.minCost > 0 && r.maxCost > 0 && r.salePrice > 0) as PricingRule[],
-  }
-}
-
-export function AtivacoesList({ products, servidores, onChange }: AtivacoesListProps) {
+export function AtivacoesList({ products, servidores, onAdd, onUpdate, onDelete }: AtivacoesListProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [form, setForm] = useState<FormState>(EMPTY_FORM)
+  const [editingProduct, setEditingProduct] = useState<ActivationProduct | null>(null)
+  const [form, setForm] = useState<ProductForm>(EMPTY_FORM)
+  const [editingRuleIdx, setEditingRuleIdx] = useState<number | null>(null)
+  const [ruleForm, setRuleForm] = useState<PricingRule>(EMPTY_RULE)
+  const [loading, setLoading] = useState(false)
 
-  const openAdd = () => {
-    setEditingId(null)
-    setForm(EMPTY_FORM)
-    setDialogOpen(true)
-  }
-
-  const openEdit = (p: ActivationProduct) => {
-    setEditingId(p.id)
-    setForm(productToForm(p))
-    setDialogOpen(true)
-  }
-
-  const handleSave = () => {
-    if (!form.nome.trim()) return
-    if (editingId) {
-      onChange(updateActivationProduct({ ...formToProduct(form), id: editingId } as ActivationProduct))
+  const handleOpen = (product?: ActivationProduct) => {
+    if (product) {
+      setEditingProduct(product)
+      setForm({
+        nome: product.nome,
+        validadeMeses: product.validadeMeses,
+        custosPermitidos: formatCustos(product.custosPermitidos),
+        linkedServerId: product.linkedServerId,
+        regrasPreco: [...product.regrasPreco],
+      })
     } else {
-      onChange(addActivationProduct(formToProduct(form)))
+      setEditingProduct(null)
+      setForm(EMPTY_FORM)
     }
+    setDialogOpen(true)
+  }
+
+  const handleSave = async () => {
+    if (!form.nome.trim()) return
+    setLoading(true)
+    const data = {
+      nome: form.nome,
+      validadeMeses: form.validadeMeses,
+      custosPermitidos: parseCustos(form.custosPermitidos),
+      linkedServerId: form.linkedServerId,
+      regrasPreco: form.regrasPreco,
+    }
+    if (editingProduct) {
+      await onUpdate({ id: editingProduct.id, ...data })
+    } else {
+      await onAdd(data)
+    }
+    setLoading(false)
     setDialogOpen(false)
   }
 
-  const handleDelete = (id: string) => {
-    onChange(deleteActivationProduct(id))
+  const handleDelete = async (id: string) => {
+    setLoading(true)
+    await onDelete(id)
+    setLoading(false)
   }
 
-  const updateRule = (idx: number, field: 'min' | 'max' | 'price', value: string) => {
-    const rules = form.rules.map((r, i) => (i === idx ? { ...r, [field]: value } : r))
-    setForm({ ...form, rules })
+  // Rule management
+  const handleAddRule = () => {
+    setForm({ ...form, regrasPreco: [...form.regrasPreco, { ...EMPTY_RULE }] })
   }
 
-  const addRule = () => {
-    setForm({ ...form, rules: [...form.rules, { min: '', max: '', price: '' }] })
+  const handleEditRule = (idx: number) => {
+    setEditingRuleIdx(idx)
+    setRuleForm({ ...form.regrasPreco[idx] })
   }
 
-  const removeRule = (idx: number) => {
-    setForm({ ...form, rules: form.rules.filter((_, i) => i !== idx) })
+  const handleSaveRule = () => {
+    if (editingRuleIdx === null) return
+    const newRules = [...form.regrasPreco]
+    newRules[editingRuleIdx] = ruleForm
+    setForm({ ...form, regrasPreco: newRules })
+    setEditingRuleIdx(null)
+    setRuleForm(EMPTY_RULE)
   }
 
-  const isFormValid = form.nome.trim().length > 0 && parseCustos(form.custosPermitidos).length > 0
+  const handleCancelRule = () => {
+    setEditingRuleIdx(null)
+    setRuleForm(EMPTY_RULE)
+  }
+
+  const handleDeleteRule = (idx: number) => {
+    const newRules = form.regrasPreco.filter((_, i) => i !== idx)
+    setForm({ ...form, regrasPreco: newRules })
+  }
+
+  const getServidorNome = (id?: string) => id ? servidores.find(s => s.id === id)?.nome ?? '—' : '—'
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="font-semibold">Ativações</h3>
+          <h3 className="font-semibold">Produtos de Ativação</h3>
           <p className="text-sm text-muted-foreground">
-            Produtos com faixas de custo e preço dinâmico (ex: ATIVA APP).
+            Configure produtos de ativação com custos variáveis e regras de preço.
           </p>
         </div>
-        <Button size="sm" onClick={openAdd}>
-          <Plus className="mr-1 h-4 w-4" />
+        <Button size="sm" onClick={() => handleOpen()} disabled={loading}>
+          <Plus className="mr-2 h-4 w-4" />
           Adicionar
         </Button>
       </div>
@@ -182,78 +182,44 @@ export function AtivacoesList({ products, servidores, onChange }: AtivacoesListP
           <TableHeader>
             <TableRow>
               <TableHead>Nome</TableHead>
-              <TableHead className="text-center">Validade</TableHead>
-              <TableHead>Fonte de Saldo</TableHead>
-              <TableHead>Faixas de Custo</TableHead>
-              <TableHead>Regras de Preço</TableHead>
+              <TableHead>Servidor Vinculado</TableHead>
+              <TableHead className="text-right">Validade (meses)</TableHead>
+              <TableHead>Custos Permitidos</TableHead>
+              <TableHead className="text-right">Regras de Preço</TableHead>
               <TableHead className="w-20 text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {products.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                  Nenhuma ativação cadastrada.
-                </TableCell>
-              </TableRow>
-            )}
-            {products.map((p) => (
+            {products.map(p => (
               <TableRow key={p.id}>
                 <TableCell className="font-medium">{p.nome}</TableCell>
-                <TableCell className="text-center">{p.validadeMeses} meses</TableCell>
-                <TableCell>
-                  {p.linkedServerId
-                    ? <span className="text-sm font-medium">
-                        {servidores.find((s) => s.id === p.linkedServerId)?.nome ?? p.linkedServerId}
-                      </span>
-                    : <span className="text-xs text-muted-foreground">Não vinculado</span>
-                  }
+                <TableCell>{getServidorNome(p.linkedServerId)}</TableCell>
+                <TableCell className="text-right">{p.validadeMeses}</TableCell>
+                <TableCell className="max-w-[200px] truncate">
+                  {p.custosPermitidos.length > 0 ? formatCustos(p.custosPermitidos) : '—'}
                 </TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-1 max-w-xs">
-                    {p.custosPermitidos.map((c) => (
-                      <span
-                        key={c}
-                        className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-xs tabular-nums"
-                      >
-                        {c}
-                      </span>
-                    ))}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="space-y-0.5">
-                    {p.regrasPreco.map((r, i) => (
-                      <p key={i} className="text-xs text-muted-foreground">
-                        {r.minCost} – {r.maxCost} ={' '}
-                        <span className="font-medium text-income">{formatCurrency(r.salePrice)}</span>
-                      </p>
-                    ))}
-                  </div>
-                </TableCell>
+                <TableCell className="text-right">{p.regrasPreco.length}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(p)}>
-                      <Pencil className="h-3.5 w-3.5" />
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleOpen(p)} disabled={loading}>
+                      <Pencil className="h-4 w-4" />
                     </Button>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive">
-                          <Trash2 className="h-3.5 w-3.5" />
+                        <Button variant="ghost" size="icon" className="h-7 w-7" disabled={loading}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent>
                         <AlertDialogHeader>
-                          <AlertDialogTitle>Excluir ativação</AlertDialogTitle>
+                          <AlertDialogTitle>Excluir produto?</AlertDialogTitle>
                           <AlertDialogDescription>
-                            Tem certeza que deseja excluir <strong>{p.nome}</strong>? Esta ação não pode ser desfeita.
+                            Esta ação não pode ser desfeita.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => handleDelete(p.id)}>
-                            Excluir
-                          </AlertDialogAction>
+                          <AlertDialogAction onClick={() => handleDelete(p.id)}>Excluir</AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>
@@ -261,138 +227,169 @@ export function AtivacoesList({ products, servidores, onChange }: AtivacoesListP
                 </TableCell>
               </TableRow>
             ))}
+            {products.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                  Nenhum produto de ativação cadastrado.
+                </TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
       </div>
 
-      {/* Add / Edit Dialog */}
+      {/* Dialog de edição/adição */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-[540px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{editingId ? 'Editar Ativação' : 'Nova Ativação'}</DialogTitle>
+            <DialogTitle>{editingProduct ? 'Editar Produto' : 'Novo Produto de Ativação'}</DialogTitle>
+            <DialogDescription>
+              Configure os detalhes do produto de ativação.
+            </DialogDescription>
           </DialogHeader>
-
-          <div className="space-y-4">
+          <div className="grid gap-4 py-4">
             <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
+              <div className="space-y-2">
                 <Label>Nome</Label>
                 <Input
-                  placeholder="Ex: ATIVA APP"
                   value={form.nome}
-                  onChange={(e) => setForm({ ...form, nome: e.target.value })}
+                  onChange={e => setForm({ ...form, nome: e.target.value })}
+                  placeholder="Ex: ATIVA APP"
+                  disabled={loading}
                 />
               </div>
-              <div className="grid gap-2">
+              <div className="space-y-2">
+                <Label>Servidor Vinculado</Label>
+                <Select value={form.linkedServerId || 'none'} onValueChange={v => setForm({ ...form, linkedServerId: v === 'none' ? undefined : v })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Nenhum" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Nenhum</SelectItem>
+                    {servidores.map(s => (
+                      <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
                 <Label>Validade (meses)</Label>
                 <Input
                   type="number"
-                  min="1"
+                  min={1}
                   value={form.validadeMeses}
-                  onChange={(e) => setForm({ ...form, validadeMeses: e.target.value })}
+                  onChange={e => setForm({ ...form, validadeMeses: parseInt(e.target.value) || 1 })}
+                  disabled={loading}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Custos Permitidos (separados por vírgula)</Label>
+                <Input
+                  value={form.custosPermitidos}
+                  onChange={e => setForm({ ...form, custosPermitidos: e.target.value })}
+                  placeholder="Ex: 0.5, 0.6, 0.7"
+                  disabled={loading}
                 />
               </div>
             </div>
 
-            <div className="grid gap-2">
-              <Label>Fonte de Saldo (Servidor)</Label>
-              <Select
-                value={form.linkedServerId || '__none__'}
-                onValueChange={(v) => setForm({ ...form, linkedServerId: v === '__none__' ? '' : v })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o servidor vinculado" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">Nenhum (sem controle de saldo)</SelectItem>
-                  {servidores.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.nome}
-                      {s.creditsBalance != null && (
-                        <span className="ml-2 text-xs text-muted-foreground">
-                          ({s.creditsBalance.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} créditos)
-                        </span>
-                      )}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Ao vender esta ativação, o custo será subtraído do saldo deste servidor.
-              </p>
-            </div>
-
-            <div className="grid gap-2">
-              <Label>Custos permitidos</Label>
-              <Input
-                placeholder="0.5, 0.6, 0.7, 1.0, 1.5"
-                value={form.custosPermitidos}
-                onChange={(e) => setForm({ ...form, custosPermitidos: e.target.value })}
-              />
-              <p className="text-xs text-muted-foreground">
-                Separe os valores por vírgula. Ex: 0.5, 0.6, 0.7, 1.0
-              </p>
-            </div>
-
-            <div className="grid gap-2">
+            {/* Regras de preço */}
+            <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label>Regras de preço por faixa</Label>
-                <Button type="button" variant="ghost" size="sm" onClick={addRule}>
+                <Label>Regras de Preço</Label>
+                <Button size="sm" variant="outline" onClick={handleAddRule} disabled={loading}>
                   <Plus className="mr-1 h-3 w-3" />
-                  Faixa
+                  Adicionar Regra
                 </Button>
               </div>
-              <div className="space-y-2">
-                {form.rules.map((r, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <div className="flex items-center gap-1 flex-1">
-                      <Input
-                        type="number"
-                        step="0.1"
-                        placeholder="Min"
-                        value={r.min}
-                        onChange={(e) => updateRule(i, 'min', e.target.value)}
-                        className="w-20"
-                      />
-                      <span className="text-muted-foreground text-sm">–</span>
-                      <Input
-                        type="number"
-                        step="0.1"
-                        placeholder="Max"
-                        value={r.max}
-                        onChange={(e) => updateRule(i, 'max', e.target.value)}
-                        className="w-20"
-                      />
-                      <span className="text-muted-foreground text-sm">=</span>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        placeholder="Preço"
-                        value={r.price}
-                        onChange={(e) => updateRule(i, 'price', e.target.value)}
-                        className="w-28"
-                      />
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 shrink-0 text-destructive hover:text-destructive"
-                      onClick={() => removeRule(i)}
-                      disabled={form.rules.length <= 1}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
+              <div className="rounded-lg border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Custo Mínimo</TableHead>
+                      <TableHead>Custo Máximo</TableHead>
+                      <TableHead>Preço de Venda</TableHead>
+                      <TableHead className="w-20 text-right">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {form.regrasPreco.map((rule, idx) =>
+                      editingRuleIdx === idx ? (
+                        <TableRow key={idx}>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={ruleForm.minCost || ''}
+                              onChange={e => setRuleForm({ ...ruleForm, minCost: parseFloat(e.target.value) || 0 })}
+                              className="h-8"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={ruleForm.maxCost || ''}
+                              onChange={e => setRuleForm({ ...ruleForm, maxCost: parseFloat(e.target.value) || 0 })}
+                              className="h-8"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={ruleForm.salePrice || ''}
+                              onChange={e => setRuleForm({ ...ruleForm, salePrice: parseFloat(e.target.value) || 0 })}
+                              className="h-8"
+                            />
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleSaveRule}>
+                                <Check className="h-4 w-4 text-green-500" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleCancelRule}>
+                                <X className="h-4 w-4 text-red-500" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        <TableRow key={idx}>
+                          <TableCell>{formatCurrency(rule.minCost)}</TableCell>
+                          <TableCell>{formatCurrency(rule.maxCost)}</TableCell>
+                          <TableCell>{formatCurrency(rule.salePrice)}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEditRule(idx)}>
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDeleteRule(idx)}>
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    )}
+                    {form.regrasPreco.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center text-muted-foreground py-4">
+                          Nenhuma regra de preço.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
               </div>
             </div>
           </div>
-
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={!isFormValid}>
-              <Check className="mr-1 h-4 w-4" />
-              {editingId ? 'Salvar' : 'Adicionar'}
+            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={loading}>Cancelar</Button>
+            <Button onClick={handleSave} disabled={loading}>
+              {loading ? 'Salvando...' : 'Salvar'}
             </Button>
           </DialogFooter>
         </DialogContent>

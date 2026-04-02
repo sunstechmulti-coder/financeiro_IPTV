@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Wallet, Mail, ArrowRight, LogOut, Shield, RefreshCw } from 'lucide-react'
+import { Wallet, Mail, ArrowRight, LogOut, Shield, RefreshCw, Lock, Eye, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -9,7 +9,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { createClient } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
 
-type Step = 'email' | 'otp' | 'authenticated'
+type Step = 'login' | 'otp' | 'authenticated'
+type AuthMode = 'password' | 'otp'
 
 interface AuthGateProps {
   children: React.ReactNode
@@ -17,10 +18,13 @@ interface AuthGateProps {
 }
 
 export function AuthGate({ children, onUserChange }: AuthGateProps) {
-  const [step, setStep] = useState<Step>('email')
+  const [step, setStep] = useState<Step>('login')
+  const [authMode, setAuthMode] = useState<AuthMode>('password')
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [pendingEmail, setPending] = useState('')
-  const [otp, setOtp] = useState(['', '', '', '', '', '', '', '']) // 8 dígitos
+  const [otp, setOtp] = useState(['', '', '', '', '', '', '', ''])
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(false)
   const [mounted, setMounted] = useState(false)
@@ -42,7 +46,6 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
     }
     checkUser()
 
-    // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (session?.user) {
@@ -51,7 +54,7 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
           onUserChange?.(session.user)
         } else if (event === 'SIGNED_OUT') {
           setUser(null)
-          setStep('email')
+          setStep('login')
           onUserChange?.(null)
         }
       }
@@ -67,8 +70,46 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
     return () => clearTimeout(t)
   }, [resendCooldown])
 
-  // ── Step 1: submit email ──────────────────────────────────────────────────
-  const handleEmailSubmit = async (e: React.FormEvent) => {
+  // ── Login com senha ──────────────────────────────────────────────────────
+  const handlePasswordLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+
+    if (!email || !password) {
+      setError('Preencha email e senha.')
+      return
+    }
+
+    setLoading(true)
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.toLowerCase().trim(),
+        password,
+      })
+
+      if (error) {
+        if (error.message.includes('Invalid login')) {
+          setError('Email ou senha incorretos.')
+        } else {
+          setError('Erro ao fazer login. Tente novamente.')
+        }
+        return
+      }
+
+      if (data.user) {
+        setUser(data.user)
+        setStep('authenticated')
+        onUserChange?.(data.user)
+      }
+    } catch {
+      setError('Erro ao fazer login.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // ── Enviar OTP ──────────────────────────────────────────────────────────
+  const handleOtpRequest = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
 
@@ -97,7 +138,7 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
       }
 
       setPending(email)
-      setOtp(['', '', '', '', '', '', '', '']) // 8 dígitos
+      setOtp(['', '', '', '', '', '', '', ''])
       setStep('otp')
       setResendCooldown(60)
       setTimeout(() => otpRefs.current[0]?.focus(), 100)
@@ -108,9 +149,8 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
     }
   }
 
-  // ── Step 2: handle OTP input ──────────────────────────────────────────────
+  // ── Verificar OTP ──────────────────────────────────────────────────────────
   const handleOtpChange = (index: number, value: string) => {
-    // Allow paste of full 8-digit code
     if (value.length === 8 && /^\d{8}$/.test(value)) {
       const digits = value.split('')
       setOtp(digits)
@@ -154,7 +194,7 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
         } else {
           setError('Código inválido. Tente novamente.')
         }
-        setOtp(['', '', '', '', '', '', '', '']) // 8 dígitos
+        setOtp(['', '', '', '', '', '', '', ''])
         otpRefs.current[0]?.focus()
         return
       }
@@ -166,7 +206,7 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
       }
     } catch {
       setError('Erro na verificação.')
-      setOtp(['', '', '', '', '', '', '', '']) // 8 dígitos
+      setOtp(['', '', '', '', '', '', '', ''])
       otpRefs.current[0]?.focus()
     } finally {
       setLoading(false)
@@ -191,7 +231,7 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
       }
 
       setResendCooldown(60)
-      setOtp(['', '', '', '', '', '', '', '']) // 8 dígitos
+      setOtp(['', '', '', '', '', '', '', ''])
       setTimeout(() => otpRefs.current[0]?.focus(), 100)
     } catch {
       setError('Erro ao reenviar.')
@@ -203,9 +243,10 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
   const handleLogout = async () => {
     await supabase.auth.signOut()
     setUser(null)
-    setStep('email')
+    setStep('login')
     setEmail('')
-    setOtp(['', '', '', '', '', '', '', '']) // 8 dígitos
+    setPassword('')
+    setOtp(['', '', '', '', '', '', '', ''])
     onUserChange?.(null)
   }
 
@@ -245,7 +286,7 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
     )
   }
 
-  // ── Login card shared wrapper ─────────────────────────────────────────────
+  // ── Login card ─────────────────────────────────────────────────────────
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
@@ -268,35 +309,106 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
         </CardHeader>
 
         <CardContent>
-          {/* ── Step: email ── */}
-          {step === 'email' && (
-            <form onSubmit={handleEmailSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="email">E-mail</Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="seu@email.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="pl-9"
-                    autoComplete="email"
-                    autoFocus
-                    disabled={loading}
-                    data-testid="email-input"
-                  />
-                </div>
-                {error && <p className="text-sm text-destructive">{error}</p>}
-              </div>
-              <Button type="submit" className="w-full" disabled={loading} data-testid="submit-email-btn">
-                {loading ? 'Enviando...' : <>Continuar <ArrowRight className="ml-2 h-4 w-4" /></>}
-              </Button>
-              <p className="text-center text-xs text-muted-foreground">
-                Um código de verificação será enviado para o seu e-mail.
-              </p>
-            </form>
+          {/* ── Step: Login ── */}
+          {step === 'login' && (
+            <>
+              {authMode === 'password' ? (
+                <form onSubmit={handlePasswordLogin} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="email">E-mail</Label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        id="email"
+                        type="email"
+                        placeholder="seu@email.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="pl-9"
+                        autoComplete="email"
+                        autoFocus
+                        disabled={loading}
+                        data-testid="email-input"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Senha</Label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        id="password"
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder="••••••••"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="pl-9 pr-10"
+                        autoComplete="current-password"
+                        disabled={loading}
+                        data-testid="password-input"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  {error && <p className="text-sm text-destructive">{error}</p>}
+                  <Button type="submit" className="w-full" disabled={loading} data-testid="login-btn">
+                    {loading ? 'Entrando...' : <>Entrar <ArrowRight className="ml-2 h-4 w-4" /></>}
+                  </Button>
+                  <div className="text-center">
+                    <button
+                      type="button"
+                      onClick={() => { setAuthMode('otp'); setError('') }}
+                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Entrar com código por e-mail
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <form onSubmit={handleOtpRequest} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="email">E-mail</Label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        id="email"
+                        type="email"
+                        placeholder="seu@email.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="pl-9"
+                        autoComplete="email"
+                        autoFocus
+                        disabled={loading}
+                        data-testid="email-input"
+                      />
+                    </div>
+                    {error && <p className="text-sm text-destructive">{error}</p>}
+                  </div>
+                  <Button type="submit" className="w-full" disabled={loading} data-testid="submit-email-btn">
+                    {loading ? 'Enviando...' : <>Enviar código <ArrowRight className="ml-2 h-4 w-4" /></>}
+                  </Button>
+                  <p className="text-center text-xs text-muted-foreground">
+                    Um código de verificação será enviado para o seu e-mail.
+                  </p>
+                  <div className="text-center">
+                    <button
+                      type="button"
+                      onClick={() => { setAuthMode('password'); setError('') }}
+                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Entrar com senha
+                    </button>
+                  </div>
+                </form>
+              )}
+            </>
           )}
 
           {/* ── Step: OTP ── */}
@@ -337,10 +449,10 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
               <div className="flex items-center justify-between text-sm">
                 <button
                   type="button"
-                  onClick={() => { setStep('email'); setError('') }}
+                  onClick={() => { setStep('login'); setError('') }}
                   className="text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  Trocar e-mail
+                  Voltar
                 </button>
                 <button
                   type="button"

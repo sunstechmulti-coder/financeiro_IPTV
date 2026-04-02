@@ -185,7 +185,16 @@ export function ServidoresList({ servidores, onAdd, onUpdate, onDelete }: Servid
                       disabled={loading}
                     />
                   </TableCell>
-                  <TableCell className="text-right">{editForm.creditsBalance ?? 0}</TableCell>
+                  <TableCell className="text-right">
+                    <Input
+                      type="number"
+                      min={0}
+                      value={editForm.creditsBalance ?? 0}
+                      onChange={(e) => setEditForm({ ...editForm, creditsBalance: parseInt(e.target.value) || 0 })}
+                      className="h-8 w-20 text-right"
+                      disabled={loading}
+                    />
+                  </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEditSave(s.id)} disabled={loading}>

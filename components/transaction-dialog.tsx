@@ -33,22 +33,9 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Checkbox } from '@/components/ui/checkbox'
 import { cn } from '@/lib/utils'
-import type { Transaction, ActivationProduct } from '@/lib/types'
+import type { Transaction, ActivationProduct, Servidor, PlanoEntrada, SaidaRapida } from '@/lib/types'
 import { generateId } from '@/lib/storage'
-import {
-  getServidores,
-  getPlanos,
-  getSaidasRapidas,
-  adjustCreditsBalance,
-  getCreditsBalance,
-} from '@/lib/config-storage'
-import { addCreditMovement } from '@/lib/credit-storage'
-import {
-  getActivationProducts,
-  addActivationTransaction,
-  getSalePrice,
-} from '@/lib/activation-storage'
-import type { Servidor, PlanoEntrada, SaidaRapida } from '@/lib/types'
+import { getSalePrice } from '@/lib/activation-storage'
 
 const QUANTIDADES = [1, 2, 3, 5, 10, 20, 30, 50, 100]
 
@@ -57,8 +44,12 @@ interface TransactionDialogProps {
   onOpenChange: (open: boolean) => void
   onSave: (transaction: Transaction) => void
   onSaveMultiple?: (transactions: Transaction[]) => void
-  onServidoresChange?: (list: Servidor[]) => void
+  onAdjustCredits?: (serverId: string, delta: number) => Promise<boolean>
   transaction?: Transaction | null
+  servidores: Servidor[]
+  planos: PlanoEntrada[]
+  saidasRapidas: SaidaRapida[]
+  activationProducts: ActivationProduct[]
 }
 
 export function TransactionDialog({
@@ -66,14 +57,13 @@ export function TransactionDialog({
   onOpenChange,
   onSave,
   onSaveMultiple,
-  onServidoresChange,
+  onAdjustCredits,
   transaction,
+  servidores,
+  planos,
+  saidasRapidas,
+  activationProducts,
 }: TransactionDialogProps) {
-  // Config data
-  const [servidores, setServidores] = useState<Servidor[]>([])
-  const [planos, setPlanos] = useState<PlanoEntrada[]>([])
-  const [saidasRapidas, setSaidasRapidas] = useState<SaidaRapida[]>([])
-  const [activationProducts, setActivationProducts] = useState<ActivationProduct[]>([])
 
   // Common fields
   const [date, setDate] = useState<Date | undefined>(new Date())
@@ -172,17 +162,6 @@ export function TransactionDialog({
   const formatCurrency = (v: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 
-  // ── Load config on open ────────────────────────────────────────────────────
-
-  useEffect(() => {
-    if (open) {
-      setServidores(getServidores())
-      setPlanos(getPlanos())
-      setSaidasRapidas(getSaidasRapidas())
-      setActivationProducts(getActivationProducts())
-    }
-  }, [open])
-
   // ── Reset on open / transaction change ────────────────────────────────────
 
   useEffect(() => {
@@ -252,7 +231,7 @@ export function TransactionDialog({
 
   // ── Save ───────────────────────────────────────────────────────────────────
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!date || !isValid) return
     const dateStr = format(date, 'yyyy-MM-dd')
     const now = new Date().toISOString()
@@ -276,17 +255,10 @@ export function TransactionDialog({
         creditsDelta: -totalCreditos,
       }
 
-      const updatedServidores = adjustCreditsBalance(selectedPlano.servidorId, -totalCreditos)
-      setServidores(updatedServidores)
-      onServidoresChange?.(updatedServidores)
-
-      addCreditMovement({
-        serverId: selectedPlano.servidorId,
-        date: dateStr,
-        type: 'sale',
-        credits: totalCreditos,
-        transactionId: incomeId,
-      })
+      // Ajustar créditos via Supabase
+      if (onAdjustCredits) {
+        await onAdjustCredits(selectedPlano.servidorId, -totalCreditos)
+      }
 
       if (registrarCusto && totalCusto > 0 && onSaveMultiple) {
         const expense: Transaction = {
@@ -326,18 +298,9 @@ export function TransactionDialog({
         creditsDelta: selectedSaida.categoria === 'Servidor' ? creditsQty : undefined,
       }
 
-      if (selectedSaida.categoria === 'Servidor' && selectedSaida.serverId && creditsQty > 0) {
-        const updatedServidores = adjustCreditsBalance(selectedSaida.serverId, creditsQty)
-        setServidores(updatedServidores)
-        onServidoresChange?.(updatedServidores)
-
-        addCreditMovement({
-          serverId: selectedSaida.serverId,
-          date: dateStr,
-          type: 'purchase',
-          credits: creditsQty,
-          transactionId: expenseId,
-        })
+      // Ajustar créditos via Supabase
+      if (selectedSaida.categoria === 'Servidor' && selectedSaida.serverId && creditsQty > 0 && onAdjustCredits) {
+        await onAdjustCredits(selectedSaida.serverId, creditsQty)
       }
 
       onSave(expense)
@@ -362,33 +325,9 @@ export function TransactionDialog({
       }
 
       // Consume balance from linked server (if configured)
-      if (selectedActivationProduct.linkedServerId) {
-        const updatedServidores = adjustCreditsBalance(
-          selectedActivationProduct.linkedServerId,
-          -activationCusto
-        )
-        setServidores(updatedServidores)
-        onServidoresChange?.(updatedServidores)
-
-        addCreditMovement({
-          serverId: selectedActivationProduct.linkedServerId,
-          date: dateStr,
-          type: 'sale',
-          credits: activationCusto,
-          transactionId: incomeId,
-        })
+      if (selectedActivationProduct.linkedServerId && onAdjustCredits) {
+        await onAdjustCredits(selectedActivationProduct.linkedServerId, -activationCusto)
       }
-
-      // Record the activation transaction for analytics
-      addActivationTransaction({
-        date: dateStr,
-        productId: selectedActivationProduct.id,
-        productNome: selectedActivationProduct.nome,
-        custo: activationCustoMonetario,
-        valorVenda: activationSalePrice,
-        lucro: activationLucro,
-        transactionId: incomeId,
-      })
 
       if (registrarCustoAtivacao && activationCustoMonetario > 0 && onSaveMultiple) {
         const expense: Transaction = {

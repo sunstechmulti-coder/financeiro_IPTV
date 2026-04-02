@@ -20,7 +20,7 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
   const [step, setStep] = useState<Step>('email')
   const [email, setEmail] = useState('')
   const [pendingEmail, setPending] = useState('')
-  const [otp, setOtp] = useState(['', '', '', '', '', ''])
+  const [otp, setOtp] = useState(['', '', '', '', '', '', '', '']) // 8 dígitos
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(false)
   const [mounted, setMounted] = useState(false)
@@ -97,7 +97,7 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
       }
 
       setPending(email)
-      setOtp(['', '', '', '', '', ''])
+      setOtp(['', '', '', '', '', '', '', '']) // 8 dígitos
       setStep('otp')
       setResendCooldown(60)
       setTimeout(() => otpRefs.current[0]?.focus(), 100)
@@ -110,18 +110,18 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
 
   // ── Step 2: handle OTP input ──────────────────────────────────────────────
   const handleOtpChange = (index: number, value: string) => {
-    // Allow paste of full 6-digit code
-    if (value.length === 6 && /^\d{6}$/.test(value)) {
+    // Allow paste of full 8-digit code
+    if (value.length === 8 && /^\d{8}$/.test(value)) {
       const digits = value.split('')
       setOtp(digits)
-      otpRefs.current[5]?.focus()
+      otpRefs.current[7]?.focus()
       return
     }
     if (!/^\d?$/.test(value)) return
     const next = [...otp]
     next[index] = value
     setOtp(next)
-    if (value && index < 5) {
+    if (value && index < 7) {
       otpRefs.current[index + 1]?.focus()
     }
   }
@@ -135,8 +135,8 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault()
     const code = otp.join('')
-    if (code.length !== 6) {
-      setError('Digite todos os 6 dígitos.')
+    if (code.length !== 8) {
+      setError('Digite todos os 8 dígitos.')
       return
     }
     setError('')
@@ -154,7 +154,7 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
         } else {
           setError('Código inválido. Tente novamente.')
         }
-        setOtp(['', '', '', '', '', ''])
+        setOtp(['', '', '', '', '', '', '', '']) // 8 dígitos
         otpRefs.current[0]?.focus()
         return
       }
@@ -166,7 +166,7 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
       }
     } catch {
       setError('Erro na verificação.')
-      setOtp(['', '', '', '', '', ''])
+      setOtp(['', '', '', '', '', '', '', '']) // 8 dígitos
       otpRefs.current[0]?.focus()
     } finally {
       setLoading(false)
@@ -191,7 +191,7 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
       }
 
       setResendCooldown(60)
-      setOtp(['', '', '', '', '', ''])
+      setOtp(['', '', '', '', '', '', '', '']) // 8 dígitos
       setTimeout(() => otpRefs.current[0]?.focus(), 100)
     } catch {
       setError('Erro ao reenviar.')
@@ -205,7 +205,7 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
     setUser(null)
     setStep('email')
     setEmail('')
-    setOtp(['', '', '', '', '', ''])
+    setOtp(['', '', '', '', '', '', '', '']) // 8 dígitos
     onUserChange?.(null)
   }
 
@@ -261,7 +261,7 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
           </CardTitle>
           <CardDescription>
             {step === 'otp'
-              ? <>Enviamos um código de 6 dígitos para <strong>{pendingEmail}</strong></>
+              ? <>Enviamos um código de 8 dígitos para <strong>{pendingEmail}</strong></>
               : 'Controle suas finanças de forma simples e segura'
             }
           </CardDescription>
@@ -304,18 +304,18 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
             <form onSubmit={handleVerify} className="space-y-6">
               <div className="space-y-3">
                 <Label>Código de verificação</Label>
-                <div className="flex gap-2 justify-center">
+                <div className="flex gap-1 justify-center">
                   {otp.map((digit, i) => (
                     <Input
                       key={i}
                       ref={(el) => { otpRefs.current[i] = el }}
                       type="text"
                       inputMode="numeric"
-                      maxLength={6}
+                      maxLength={8}
                       value={digit}
                       onChange={(e) => handleOtpChange(i, e.target.value)}
                       onKeyDown={(e) => handleOtpKeyDown(i, e)}
-                      className="w-11 h-12 text-center text-lg font-mono tabular-nums"
+                      className="w-10 h-12 text-center text-lg font-mono tabular-nums px-0"
                       disabled={loading}
                       autoFocus={i === 0}
                       data-testid={`otp-input-${i}`}
@@ -328,7 +328,7 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
               <Button 
                 type="submit" 
                 className="w-full" 
-                disabled={loading || otp.join('').length !== 6}
+                disabled={loading || otp.join('').length !== 8}
                 data-testid="verify-otp-btn"
               >
                 {loading ? 'Verificando...' : 'Verificar e entrar'}

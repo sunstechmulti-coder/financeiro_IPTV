@@ -8,8 +8,8 @@
 const SESSION_EMAIL_KEY = 'cf_email'
 
 export function getSessionEmail(): string | null {
-  if (typeof window === 'undefined') return null
-  return sessionStorage.getItem(SESSION_EMAIL_KEY)
+  if (typeof window === 'undefined') return 'usuario@local.dev'
+  return sessionStorage.getItem(SESSION_EMAIL_KEY) || 'usuario@local.dev'
 }
 
 export function setSessionEmail(email: string): void {

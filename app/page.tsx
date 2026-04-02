@@ -2,16 +2,14 @@
 
 import { useState } from 'react'
 import { CashFlowDashboard } from '@/components/cash-flow-dashboard'
-import { EmailGate } from '@/components/email-gate'
+// import { EmailGate } from '@/components/email-gate' // Temporariamente desabilitado
 
 export default function Page() {
-  const [userEmail, setUserEmail] = useState<string | null>(null)
+  // Acesso direto ao dashboard (autenticação desabilitada temporariamente)
+  const [userEmail] = useState<string | null>('usuario@local.dev')
 
   return (
-    <EmailGate onEmailChange={setUserEmail}>
-      {/* key forces full remount when the authenticated email changes,
-          so all localStorage reads use the newly scoped keys */}
-      <CashFlowDashboard key={userEmail ?? 'unauthenticated'} />
-    </EmailGate>
+    // Acesso direto sem autenticação
+    <CashFlowDashboard key={userEmail ?? 'local'} />
   )
 }

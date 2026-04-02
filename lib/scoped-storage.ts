@@ -17,9 +17,10 @@ import { getSessionEmail } from './user-session'
 
 function buildKey(key: string): string {
   const email = getSessionEmail()
-  if (!email) return `cashflow:anonymous:${key}`
+  // Em modo local, usar um email padrão para scoping
+  const effectiveEmail = email || 'usuario@local.dev'
   // Sanitise email for use in a key (replace chars that could be ambiguous)
-  const sanitized = email.toLowerCase().replace(/[^a-z0-9@._-]/g, '_')
+  const sanitized = effectiveEmail.toLowerCase().replace(/[^a-z0-9@._-]/g, '_')
   return `cashflow:${sanitized}:${key}`
 }
 

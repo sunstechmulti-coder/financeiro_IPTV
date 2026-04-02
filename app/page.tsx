@@ -2,14 +2,15 @@
 
 import { useState } from 'react'
 import { CashFlowDashboard } from '@/components/cash-flow-dashboard'
-// import { EmailGate } from '@/components/email-gate' // Temporariamente desabilitado
+import { AuthGate } from '@/components/auth-gate'
+import type { User } from '@supabase/supabase-js'
 
 export default function Page() {
-  // Acesso direto ao dashboard (autenticação desabilitada temporariamente)
-  const [userEmail] = useState<string | null>('usuario@local.dev')
+  const [user, setUser] = useState<User | null>(null)
 
   return (
-    // Acesso direto sem autenticação
-    <CashFlowDashboard key={userEmail ?? 'local'} />
+    <AuthGate onUserChange={setUser}>
+      <CashFlowDashboard key={user?.id ?? 'unauthenticated'} />
+    </AuthGate>
   )
 }

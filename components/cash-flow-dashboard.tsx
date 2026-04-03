@@ -9,6 +9,7 @@ import { TransactionDialog } from '@/components/transaction-dialog'
 import { RevenueHeatmap } from '@/components/revenue-heatmap'
 import { CreditsCard } from '@/components/credits-card'
 import { ActivationsCard } from '@/components/activations-card'
+import { QuickEntry } from '@/components/quick-entry'
 import { ConfigPage } from '@/components/config/config-page'
 import { cn } from '@/lib/utils'
 import type { Transaction } from '@/lib/types'
@@ -175,6 +176,14 @@ export function CashFlowDashboard() {
         <div className="mx-auto max-w-6xl space-y-6 p-4 pb-24">
           {activeTab === 'dashboard' && (
             <>
+              {/* Quick Entry - Lançamento Express */}
+              <QuickEntry
+                planos={planos}
+                servidores={servidores}
+                onSave={handleSaveTransaction}
+                onAdjustCredits={adjustCreditsBalance}
+              />
+
               <SummaryCards
                 totalIncome={totalIncome}
                 totalExpenses={totalExpenses}

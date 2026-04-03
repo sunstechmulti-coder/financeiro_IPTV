@@ -73,8 +73,10 @@ Migração completa de um dashboard financeiro IPTV de localStorage/V0 para Supa
 - P3: Limpeza de arquivos legados (storage.ts, config-storage.ts, etc.)
 
 ## Changelog
+- 2026-04-03: Lançamento Express - entrada rápida estilo planilha com autocomplete por código de plano
 - 2026-04-03: Corrigido schema DB (credits_delta, credits_balance, credits → DECIMAL) para suportar ativações com custos fracionários
 - 2026-04-03: Visual da aba Planos - Tipo "Novo" em verde, "Renovação" em azul
 - 2026-04-03: Ordenação de Planos: por servidor → tipo (novo primeiro) → meses (1,3,6,12)
+- 2026-04-03: Valor de venda editável na hora da transação (override do preço do plano)
 - 2026-04-03: Feature de alteração de senha na aba Conta (Configurações)
 - 2026-04-03: Script admin para redefinir senhas (scripts/reset_password.py)

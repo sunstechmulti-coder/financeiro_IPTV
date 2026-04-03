@@ -83,6 +83,7 @@ export function TransactionDialog({
   const [qtdEntrada, setQtdEntrada] = useState(1)
   const [qtdFracionada, setQtdFracionada] = useState('1')
   const [registrarCusto, setRegistrarCusto] = useState(false)
+  const [valorVendaOverride, setValorVendaOverride] = useState('')
 
   // Saída rápida
   const [saidaId, setSaidaId] = useState('')
@@ -111,7 +112,10 @@ export function TransactionDialog({
     : qtdEntrada
 
   // Entrada totals
-  const totalVenda    = selectedPlano ? selectedPlano.valorVenda * qtdEfetiva : 0
+  const valorVendaUnitario = valorVendaOverride
+    ? (parseFloat(valorVendaOverride.replace(',', '.')) || 0)
+    : (selectedPlano?.valorVenda ?? 0)
+  const totalVenda    = valorVendaUnitario * qtdEfetiva
   const totalCusto    = selectedPlano ? selectedPlano.custo      * qtdEfetiva : 0
   const totalLucro    = totalVenda - totalCusto
   const totalCreditos = selectedPlano ? selectedPlano.creditos   * qtdEfetiva : 0
@@ -182,6 +186,7 @@ export function TransactionDialog({
       setQtdEntrada(1)
       setQtdFracionada('1')
       setRegistrarCusto(false)
+      setValorVendaOverride('')
       setSaidaId('')
       setQtdSaida(1)
       setValorManualSaida('')
@@ -191,7 +196,15 @@ export function TransactionDialog({
     }
   }, [transaction, open])
 
-  useEffect(() => { setPlanoId('') }, [servidorId])
+  useEffect(() => { setPlanoId(''); setValorVendaOverride('') }, [servidorId])
+
+  useEffect(() => {
+    if (selectedPlano) {
+      setValorVendaOverride(selectedPlano.valorVenda.toFixed(2).replace('.', ','))
+    } else {
+      setValorVendaOverride('')
+    }
+  }, [planoId])
 
   useEffect(() => {
     setActivationCusto(null)
@@ -209,7 +222,7 @@ export function TransactionDialog({
   // ── Validation ───────────���─────────────────────────────────────────────────
 
   const isEntradaRapidaValid =
-    modo === 'rapido' && type === 'income' && selectedPlano !== null && qtdEfetiva > 0 && !insufficientCredits
+    modo === 'rapido' && type === 'income' && selectedPlano !== null && qtdEfetiva > 0 && valorVendaUnitario > 0 && !insufficientCredits
 
   const isSaidaRapidaValid =
     modo === 'rapido' && type === 'expense' && selectedSaida !== null && totalSaida > 0
@@ -560,6 +573,29 @@ export function TransactionDialog({
                     </div>
                   )}
 
+                  {/* Valor de venda editável */}
+                  {selectedPlano && (
+                    <div className="grid gap-2">
+                      <Label>Valor de venda (R$)</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
+                          R$
+                        </span>
+                        <Input
+                          className="pl-9"
+                          value={valorVendaOverride}
+                          onChange={(e) => setValorVendaOverride(e.target.value.replace(/[^\d,\.]/g, ''))}
+                          data-testid="valor-venda-override"
+                        />
+                      </div>
+                      {valorVendaUnitario !== selectedPlano.valorVenda && (
+                        <p className="text-xs text-amber-500">
+                          Valor original do plano: {formatCurrency(selectedPlano.valorVenda)}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
                   {/* Alerta créditos insuficientes */}
                   {selectedPlano && insufficientCredits && (
                     <div className="flex items-start gap-2 rounded-lg border border-destructive/50 bg-destructive/10 p-3">
@@ -579,7 +615,7 @@ export function TransactionDialog({
                     <div className="rounded-lg border bg-muted/40 p-4 space-y-2">
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Valor unitário:</span>
-                        <span>{formatCurrency(selectedPlano.valorVenda)}</span>
+                        <span>{formatCurrency(valorVendaUnitario)}</span>
                       </div>
                       {qtdEfetiva > 1 && (
                         <div className="flex justify-between text-sm">

@@ -36,13 +36,21 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
   // On mount: check existing session
   useEffect(() => {
     const checkUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        setUser(user)
-        setStep('authenticated')
-        onUserChange?.(user)
+      try {
+        // Add timeout to prevent infinite loading
+        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000))
+        const userPromise = supabase.auth.getUser().then(r => r.data.user)
+        const result = await Promise.race([userPromise, timeoutPromise])
+        if (result) {
+          setUser(result)
+          setStep('authenticated')
+          onUserChange?.(result)
+        }
+      } catch (err) {
+        console.error('Error checking user session:', err)
+      } finally {
+        setMounted(true)
       }
-      setMounted(true)
     }
     checkUser()
 

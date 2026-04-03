@@ -1,11 +1,12 @@
 'use client'
 
-import { Settings, Server, LayoutList, ArrowDownCircle, Zap } from 'lucide-react'
+import { Settings, Server, LayoutList, ArrowDownCircle, Zap, UserCog } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ServidoresList } from '@/components/config/servidores-list'
 import { PlanosList } from '@/components/config/planos-list'
 import { SaidasRapidasList } from '@/components/config/saidas-rapidas-list'
 import { AtivacoesList } from '@/components/config/ativacoes-list'
+import { ChangePassword } from '@/components/config/change-password'
 import type { Servidor, PlanoEntrada, SaidaRapida, ActivationProduct } from '@/lib/types'
 
 interface ConfigPageProps {
@@ -60,7 +61,7 @@ export function ConfigPage({
       </div>
 
       <Tabs defaultValue="servidores">
-        <TabsList className="grid w-full grid-cols-4 max-w-2xl">
+        <TabsList className="grid w-full grid-cols-5 max-w-2xl">
           <TabsTrigger value="servidores" className="gap-1.5">
             <Server className="h-4 w-4" />
             Servidores
@@ -76,6 +77,10 @@ export function ConfigPage({
           <TabsTrigger value="ativacoes" className="gap-1.5">
             <Zap className="h-4 w-4" />
             Ativações
+          </TabsTrigger>
+          <TabsTrigger value="conta" className="gap-1.5">
+            <UserCog className="h-4 w-4" />
+            Conta
           </TabsTrigger>
         </TabsList>
 
@@ -116,6 +121,10 @@ export function ConfigPage({
             onUpdate={onUpdateActivationProduct}
             onDelete={onDeleteActivationProduct}
           />
+        </TabsContent>
+
+        <TabsContent value="conta" className="mt-6">
+          <ChangePassword />
         </TabsContent>
       </Tabs>
     </div>

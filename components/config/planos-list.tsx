@@ -108,11 +108,22 @@ export function PlanosList({ planos, servidores, onAdd, onUpdate, onDelete }: Pl
     setLoading(false)
   }
 
-  const planosFiltrados = filtroServidor === 'all'
+  const getServidorNome = (id: string) => servidores.find(s => s.id === id)?.nome ?? '—'
+
+  // Sort: by server name → type (novo first) → meses ascending
+  const planosFiltrados = (filtroServidor === 'all'
     ? planos
     : planos.filter(p => p.servidorId === filtroServidor)
-
-  const getServidorNome = (id: string) => servidores.find(s => s.id === id)?.nome ?? '—'
+  ).slice().sort((a, b) => {
+    // 1. Server name
+    const sA = getServidorNome(a.servidorId).toLowerCase()
+    const sB = getServidorNome(b.servidorId).toLowerCase()
+    if (sA !== sB) return sA.localeCompare(sB)
+    // 2. Type: 'novo' before 'renovacao'
+    if (a.tipo !== b.tipo) return a.tipo === 'novo' ? -1 : 1
+    // 3. Meses ascending (1, 3, 6, 12)
+    return a.meses - b.meses
+  })
 
   return (
     <div className="space-y-4">
@@ -167,7 +178,11 @@ export function PlanosList({ planos, servidores, onAdd, onUpdate, onDelete }: Pl
                 <TableCell className="font-medium">{p.codigo}</TableCell>
                 <TableCell>{p.descricao}</TableCell>
                 <TableCell>{getServidorNome(p.servidorId)}</TableCell>
-                <TableCell>{p.tipo === 'renovacao' ? 'Renovação' : 'Novo'}</TableCell>
+                <TableCell>
+                  <span className={p.tipo === 'novo' ? 'text-emerald-400 font-medium' : 'text-blue-400 font-medium'}>
+                    {p.tipo === 'renovacao' ? 'Renovação' : 'Novo'}
+                  </span>
+                </TableCell>
                 <TableCell className="text-right">{p.meses}</TableCell>
                 <TableCell className="text-right">{p.creditos}</TableCell>
                 <TableCell className="text-right">{formatCurrency(p.valorVenda)}</TableCell>

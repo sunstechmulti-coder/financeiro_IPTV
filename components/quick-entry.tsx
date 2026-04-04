@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Zap, Check, X, ChevronDown, ChevronUp } from 'lucide-react'
+import { Zap, Check, X, ChevronDown, ChevronUp, CalendarDays } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -30,6 +30,7 @@ interface EntryLog {
 
 export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: QuickEntryProps) {
   const [expanded, setExpanded] = useState(false)
+  const [selectedDate, setSelectedDate] = useState(() => format(new Date(), 'yyyy-MM-dd'))
   const [codigoInput, setCodigoInput] = useState('')
   const [valorOverride, setValorOverride] = useState('')
   const [matchedPlano, setMatchedPlano] = useState<PlanoEntrada | null>(null)
@@ -109,12 +110,11 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
     setFeedbackMsg('')
 
     try {
-      const dateStr = format(new Date(), 'yyyy-MM-dd')
       const now = new Date().toISOString()
 
       const tx: Transaction = {
         id: generateId(),
-        date: dateStr,
+        date: selectedDate,
         type: 'income',
         description: matchedPlano.descricao,
         amount: valorFinal,
@@ -205,12 +205,24 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
           <Zap className="h-4 w-4" />
           Lançamento Express
         </span>
-        <button
-          onClick={() => setExpanded(false)}
-          className="text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ChevronUp className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="bg-transparent border border-border/50 rounded px-2 py-1 text-xs text-muted-foreground hover:text-foreground focus:text-foreground focus:border-primary/50 outline-none transition-colors w-[120px]"
+              data-testid="quick-entry-date"
+            />
+          </div>
+          <button
+            onClick={() => setExpanded(false)}
+            className="text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ChevronUp className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       {/* Input area */}

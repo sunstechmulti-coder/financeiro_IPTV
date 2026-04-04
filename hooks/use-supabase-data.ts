@@ -49,7 +49,7 @@ export function useSupabaseData() {
     const { data: transactionsData } = await supabase
       .from('transactions')
       .select('*')
-      .order('date', { ascending: false })
+      .order('created_at', { ascending: false })
     
     if (transactionsData) {
       setTransactions(transactionsData.map(mapTransactionFromDB))

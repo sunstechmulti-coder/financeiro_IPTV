@@ -73,6 +73,9 @@ Migração completa de um dashboard financeiro IPTV de localStorage/V0 para Supa
 - P3: Limpeza de arquivos legados (storage.ts, config-storage.ts, etc.)
 
 ## Changelog
+- 2026-04-04: Data persistente no diálogo Nova Transação (não reseta entre lançamentos)
+- 2026-04-04: Transações ordenadas por ordem de inserção (created_at) em vez de data
+- 2026-04-04: Mobile responsivo: email badge compacto, botão FAB, Lançamento Express em grid
 - 2026-04-03: Lançamento Express - entrada rápida estilo planilha com autocomplete por código de plano
 - 2026-04-03: Corrigido schema DB (credits_delta, credits_balance, credits → DECIMAL) para suportar ativações com custos fracionários
 - 2026-04-03: Visual da aba Planos - Tipo "Novo" em verde, "Renovação" em azul

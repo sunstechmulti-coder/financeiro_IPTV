@@ -176,7 +176,7 @@ export function TransactionDialog({
       setAmount(transaction.amount.toFixed(2).replace('.', ','))
       setModo('manual')
     } else {
-      setDate(new Date())
+      // Keep the current date between entries (don't reset)
       setType('income')
       setDescription('')
       setAmount('')

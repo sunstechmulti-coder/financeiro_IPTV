@@ -184,14 +184,14 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
     return (
       <button
         onClick={() => { setExpanded(true); setTimeout(() => inputRef.current?.focus(), 100) }}
-        className="w-full flex items-center justify-between rounded-lg border border-dashed border-primary/30 bg-primary/5 px-4 py-3 text-sm transition-colors hover:bg-primary/10 hover:border-primary/50"
+        className="w-full flex items-center justify-between rounded-lg border border-dashed border-primary/30 bg-primary/5 px-3 sm:px-4 py-2.5 sm:py-3 text-sm transition-colors hover:bg-primary/10 hover:border-primary/50"
         data-testid="quick-entry-toggle"
       >
         <span className="flex items-center gap-2 text-primary font-medium">
           <Zap className="h-4 w-4" />
           Lançamento Express
         </span>
-        <span className="text-xs text-muted-foreground">Digite o código do plano e confirme com Enter</span>
+        <span className="text-xs text-muted-foreground hidden sm:inline">Digite o código do plano e confirme com Enter</span>
         <ChevronDown className="h-4 w-4 text-muted-foreground" />
       </button>
     )
@@ -200,7 +200,7 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
   return (
     <div className="rounded-lg border border-primary/30 bg-card" data-testid="quick-entry-panel">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/50">
+      <div className="flex items-center justify-between px-3 sm:px-4 py-2.5 border-b border-border/50">
         <span className="flex items-center gap-2 text-sm font-medium text-primary">
           <Zap className="h-4 w-4" />
           Lançamento Express
@@ -213,11 +213,11 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
         </button>
       </div>
 
-      {/* Input row */}
-      <div className="px-4 py-3 space-y-3">
-        <div className="flex items-end gap-3">
-          {/* Code input with autocomplete */}
-          <div className="relative flex-1 max-w-[200px]">
+      {/* Input area */}
+      <div className="px-3 sm:px-4 py-3 space-y-3">
+        {/* Code input row */}
+        <div className="flex items-end gap-2 sm:gap-3">
+          <div className="relative flex-1 sm:flex-none sm:w-[200px]">
             <label className="text-xs text-muted-foreground mb-1 block">Código</label>
             <Input
               ref={inputRef}
@@ -247,7 +247,7 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
             {showSuggestions && (
               <div
                 ref={suggestionsRef}
-                className="absolute z-50 top-full left-0 mt-1 w-[350px] max-h-[200px] overflow-y-auto rounded-md border bg-popover shadow-lg"
+                className="absolute z-50 top-full left-0 mt-1 w-[calc(100vw-2rem)] sm:w-[350px] max-h-[200px] overflow-y-auto rounded-md border bg-popover shadow-lg"
               >
                 {suggestions.map(p => {
                   const srv = getServidor(p.servidorId)
@@ -255,12 +255,12 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
                     <button
                       key={p.id}
                       onClick={() => selectPlano(p)}
-                      className="w-full flex items-center gap-3 px-3 py-2 text-left text-sm hover:bg-muted/50 transition-colors"
+                      className="w-full flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 text-left text-sm hover:bg-muted/50 transition-colors"
                     >
                       <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded font-medium shrink-0">
                         {p.codigo}
                       </span>
-                      <span className="truncate text-muted-foreground">{p.descricao}</span>
+                      <span className="truncate text-muted-foreground text-xs sm:text-sm">{p.descricao}</span>
                       <span className="ml-auto text-xs text-muted-foreground shrink-0">{srv?.nome}</span>
                       <span className="text-xs font-medium shrink-0">{formatCurrency(p.valorVenda)}</span>
                     </button>
@@ -270,10 +270,29 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
             )}
           </div>
 
-          {/* Matched plan info */}
+          {/* Mobile: show confirm button next to code when matched */}
           {matchedPlano && servidor && (
-            <>
-              <div className="min-w-0">
+            <div className="sm:hidden shrink-0">
+              <label className="text-xs text-muted-foreground mb-1 block opacity-0">.</label>
+              <Button
+                size="sm"
+                onClick={handleConfirm}
+                disabled={!canSave || saving}
+                className="h-9 px-3"
+                data-testid="quick-entry-confirm-mobile"
+              >
+                {saving ? '...' : <Check className="h-4 w-4" />}
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {/* Matched plan details */}
+        {matchedPlano && servidor && (
+          <>
+            {/* Desktop: single row */}
+            <div className="hidden sm:flex items-end gap-3">
+              <div className="min-w-0 flex-1">
                 <label className="text-xs text-muted-foreground mb-1 block">Plano</label>
                 <div className="h-9 flex items-center px-3 rounded-md border bg-muted/30 text-sm truncate">
                   {matchedPlano.descricao}
@@ -327,10 +346,46 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
               >
                 {saving ? '...' : <><Check className="h-4 w-4 mr-1" /> Lançar</>}
               </Button>
-            </>
-          )}
-        </div>
+            </div>
 
+            {/* Mobile: stacked grid */}
+            <div className="sm:hidden space-y-2">
+              <div className="text-xs text-muted-foreground truncate">
+                {matchedPlano.descricao} — <span className="font-medium text-foreground">{servidor.nome}</span>
+                <span className={cn('ml-1 tabular-nums', saldoAtual > 0 ? 'text-emerald-400' : 'text-red-400')}>
+                  ({saldoAtual}cr)
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Valor (R$)</label>
+                  <div className="relative">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">R$</span>
+                    <Input
+                      className="pl-8 font-mono text-sm"
+                      value={valorOverride}
+                      onChange={(e) => setValorOverride(e.target.value.replace(/[^\d,\.]/g, ''))}
+                      onKeyDown={handleKeyDown}
+                      disabled={saving}
+                      data-testid="quick-entry-value-mobile"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Lucro</label>
+                  <div className={cn(
+                    'h-9 flex items-center px-3 rounded-md border bg-muted/30 text-sm font-medium tabular-nums',
+                    lucro >= 0 ? 'text-emerald-400' : 'text-red-400'
+                  )}>
+                    {formatCurrency(lucro)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Warnings and feedback below the input area */}
         {/* Insufficient credits warning */}
         {matchedPlano && saldoRestante < 0 && (
           <div className="text-xs text-red-400">

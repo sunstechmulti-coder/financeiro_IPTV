@@ -137,13 +137,14 @@ export function CashFlowDashboard() {
             ))}
           </nav>
 
-          {/* New transaction button */}
+          {/* New transaction button - hidden on mobile to avoid email overlap */}
           <Button
             size="sm"
             onClick={() => {
               setEditingTransaction(null)
               setDialogOpen(true)
             }}
+            className="hidden sm:flex"
             data-testid="new-transaction-btn"
           >
             <Plus className="mr-1 h-4 w-4" />
@@ -168,6 +169,21 @@ export function CashFlowDashboard() {
               <span className="hidden xs:inline">{label}</span>
             </button>
           ))}
+        </div>
+
+        {/* Mobile floating new transaction button */}
+        <div className="sm:hidden fixed bottom-4 right-4 z-30">
+          <Button
+            size="sm"
+            onClick={() => {
+              setEditingTransaction(null)
+              setDialogOpen(true)
+            }}
+            className="rounded-full h-12 w-12 p-0 shadow-lg"
+            data-testid="new-transaction-btn-mobile"
+          >
+            <Plus className="h-5 w-5" />
+          </Button>
         </div>
       </header>
 

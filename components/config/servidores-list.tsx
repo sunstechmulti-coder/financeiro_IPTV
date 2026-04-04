@@ -189,8 +189,9 @@ export function ServidoresList({ servidores, onAdd, onUpdate, onDelete }: Servid
                     <Input
                       type="number"
                       min={0}
+                      step="0.5"
                       value={editForm.creditsBalance ?? 0}
-                      onChange={(e) => setEditForm({ ...editForm, creditsBalance: parseInt(e.target.value) || 0 })}
+                      onChange={(e) => setEditForm({ ...editForm, creditsBalance: parseFloat(e.target.value) || 0 })}
                       className="h-8 w-20 text-right"
                       disabled={loading}
                     />

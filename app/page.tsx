@@ -10,13 +10,7 @@ export default function Page() {
 
   return (
     <AuthGate onUserChange={setUser}>
-      {(onLogout) => (
-        <CashFlowDashboard
-          key={user?.id ?? 'unauthenticated'}
-          userEmail={user?.email ?? null}
-          onLogout={onLogout}
-        />
-      )}
+      <CashFlowDashboard key={user?.id ?? 'unauthenticated'} />
     </AuthGate>
   )
 }

@@ -10,7 +10,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
 
 interface AuthGateProps {
-  children: (onLogout: () => Promise<void>) => React.ReactNode
+  children: React.ReactNode
   onUserChange?: (user: User | null) => void
 }
 
@@ -143,7 +143,7 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
   if (user) {
     return (
       <div className="relative">
-        {children(handleLogout)}
+        {children}
       </div>
     )
   }

@@ -27,25 +27,26 @@ const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: 'configuracoes', label: 'Configurações',  icon: Settings },
 ]
 
-export function CashFlowDashboard({
-  userEmail,
-  onLogout,
-}: {
-  userEmail?: string | null
-  onLogout?: () => Promise<void>
-}) {
+export function CashFlowDashboard() {
   const [isAdmin, setIsAdmin] = useState(false)
+  const [userEmail, setUserEmail] = useState<string | null>(null)
   const supabase = createClient()
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       setIsAdmin(data.user?.email === ADMIN_EMAIL)
+      setUserEmail(data.user?.email ?? null)
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setIsAdmin(session?.user?.email === ADMIN_EMAIL)
+      setUserEmail(session?.user?.email ?? null)
     })
     return () => subscription.unsubscribe()
   }, [])
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+  }
 
   const {
     transactions,
@@ -152,7 +153,7 @@ export function CashFlowDashboard({
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={onLogout}
+                  onClick={handleLogout}
                   className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
                   title="Sair"
                 >

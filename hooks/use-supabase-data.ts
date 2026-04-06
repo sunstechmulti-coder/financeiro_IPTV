@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { 
   Transaction, 
@@ -26,17 +26,18 @@ export function useSupabaseData() {
   const [revendaGrupos, setRevendaGrupos] = useState<RevendaGrupo[]>([])
   const [loading, setLoading] = useState(true)
   const [userId, setUserId] = useState<string | null>(null)
+  const isMounted = useRef(false)
   
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
 
   // Fetch all data
   const fetchAllData = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
-      setLoading(false)
+      if (isMounted.current) setLoading(false)
       return
     }
-    setUserId(user.id)
+    if (isMounted.current) setUserId(user.id)
 
     // Fetch servidores
     const { data: servidoresData } = await supabase
@@ -44,7 +45,7 @@ export function useSupabaseData() {
       .select('*')
       .order('nome')
     
-    if (servidoresData) {
+    if (servidoresData && isMounted.current) {
       setServidores(servidoresData.map(mapServidorFromDB))
     }
 
@@ -54,7 +55,7 @@ export function useSupabaseData() {
       .select('*')
       .order('created_at', { ascending: false })
     
-    if (transactionsData) {
+    if (transactionsData && isMounted.current) {
       setTransactions(transactionsData.map(mapTransactionFromDB))
     }
 
@@ -64,7 +65,7 @@ export function useSupabaseData() {
       .select('*')
       .order('codigo')
     
-    if (planosData) {
+    if (planosData && isMounted.current) {
       setPlanos(planosData.map(mapPlanoFromDB))
     }
 
@@ -74,7 +75,7 @@ export function useSupabaseData() {
       .select('*')
       .order('nome')
     
-    if (saidasData) {
+    if (saidasData && isMounted.current) {
       setSaidasRapidas(saidasData.map(mapSaidaRapidaFromDB))
     }
 
@@ -84,7 +85,7 @@ export function useSupabaseData() {
       .select('*')
       .order('date', { ascending: false })
     
-    if (movementsData) {
+    if (movementsData && isMounted.current) {
       setCreditMovements(movementsData.map(mapCreditMovementFromDB))
     }
 
@@ -94,7 +95,7 @@ export function useSupabaseData() {
       .select('*')
       .order('nome')
     
-    if (productsData) {
+    if (productsData && isMounted.current) {
       setActivationProducts(productsData.map(mapActivationProductFromDB))
     }
 
@@ -104,7 +105,7 @@ export function useSupabaseData() {
       .select('*')
       .order('created_at', { ascending: false })
     
-    if (actTxData) {
+    if (actTxData && isMounted.current) {
       setActivationTransactions(actTxData.map(mapActivationTransactionFromDB))
     }
 
@@ -114,7 +115,7 @@ export function useSupabaseData() {
       .select('*')
       .order('nome')
     
-    if (revendaData) {
+    if (revendaData && isMounted.current) {
       setRevendaGrupos(revendaData.map((r: Record<string, unknown>) => ({
         id: r.id as string,
         nome: r.nome as string,
@@ -127,7 +128,7 @@ export function useSupabaseData() {
       })))
     }
 
-    setLoading(false)
+    if (isMounted.current) setLoading(false)
   }, [supabase])
 
   // Seed default data if user has none
@@ -143,7 +144,12 @@ export function useSupabaseData() {
   }, [userId, servidores.length, fetchAllData])
 
   useEffect(() => {
+    isMounted.current = true
     fetchAllData()
+    
+    return () => {
+      isMounted.current = false
+    }
   }, [fetchAllData])
 
   useEffect(() => {
@@ -522,7 +528,7 @@ export function useSupabaseData() {
     return true
   }
 
-  // ─── Activation Transaction operations ─────────────────────────────────────
+  // ─── Activation Transaction operations ────────────────────────────────���────
   const addActivationTransaction = async (
     atx: Omit<ActivationTransaction, 'id' | 'createdAt'>
   ): Promise<ActivationTransaction | null> => {

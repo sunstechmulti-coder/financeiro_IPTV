@@ -46,7 +46,9 @@ export function TopExpenses({ transactions, month, year }: TopExpensesProps) {
               <XAxis type="number" tick={{ fontSize: 11, fill: 'var(--color-muted-foreground)' }} tickLine={false} axisLine={false} tickFormatter={(v) => `R$${(v / 1000).toFixed(1)}k`} />
               <YAxis type="category" dataKey="desc" tick={{ fontSize: 11, fill: 'var(--color-muted-foreground)' }} tickLine={false} axisLine={false} width={80} />
               <Tooltip
-                contentStyle={{ background: 'var(--color-card)', border: '1px solid var(--color-border)', borderRadius: '8px', fontSize: 12 }}
+                contentStyle={{ background: 'var(--color-card)', border: '1px solid var(--color-border)', borderRadius: '8px', fontSize: 12, color: 'var(--color-card-foreground)' }}
+                labelStyle={{ color: 'var(--color-card-foreground)', fontWeight: 600 }}
+                itemStyle={{ color: 'var(--color-card-foreground)' }}
                 formatter={(value: number) => [formatCurrency(value), 'Despesa']}
               />
               <Bar dataKey="total" radius={[0, 4, 4, 0]}>

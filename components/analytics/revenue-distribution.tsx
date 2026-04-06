@@ -76,7 +76,9 @@ export function RevenueDistribution({ transactions, planos, month, year }: Reven
                 ))}
               </Pie>
               <Tooltip
-                contentStyle={{ background: 'var(--color-card)', border: '1px solid var(--color-border)', borderRadius: '8px', fontSize: 12 }}
+                contentStyle={{ background: 'var(--color-card)', border: '1px solid var(--color-border)', borderRadius: '8px', fontSize: 12, color: 'var(--color-card-foreground)' }}
+                labelStyle={{ color: 'var(--color-card-foreground)', fontWeight: 600 }}
+                itemStyle={{ color: 'var(--color-card-foreground)' }}
                 formatter={(value: number) => [formatCurrency(value)]}
               />
               <Legend wrapperStyle={{ fontSize: 12 }} />

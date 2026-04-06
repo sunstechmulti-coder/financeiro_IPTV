@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { formatCurrency } from '@/lib/format'
-import type { Transaction, Servidor, CreditMovement } from '@/lib/types'
+import type { Transaction, Servidor } from '@/lib/types'
 
 interface ServerProfitProps {
   transactions: Transaction[]
@@ -13,7 +13,7 @@ interface ServerProfitProps {
   year: number
 }
 
-export function ServerProfit({ transactions, servidores, movements, month, year }: ServerProfitProps) {
+export function ServerProfit({ transactions, servidores, month, year }: ServerProfitProps) {
   const data = useMemo(() => {
     return servidores.map(srv => {
       const txsThisMonth = transactions.filter(t => {
@@ -21,22 +21,23 @@ export function ServerProfit({ transactions, servidores, movements, month, year 
         return t.serverId === srv.id && d.getMonth() === month && d.getFullYear() === year
       })
 
-      const revenue = txsThisMonth.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
+      const revenue = txsThisMonth
+        .filter(t => t.type === 'income')
+        .reduce((s, t) => s + t.amount, 0)
 
-      // Cost = sum of credits sold (sale movements) * unit cost
-      const creditsSold = movements
-        .filter(m => {
-          const d = new Date(m.date + 'T00:00:00')
-          return m.serverId === srv.id && m.type === 'sale' && d.getMonth() === month && d.getFullYear() === year
-        })
-        .reduce((s, m) => s + m.credits, 0)
+      // Custo real = soma dos créditos consumidos × custo unitário do servidor
+      // creditsDelta é negativo quando créditos são consumidos (venda de plano)
+      const creditsConsumed = txsThisMonth
+        .filter(t => t.type === 'income' && t.creditsDelta != null && t.creditsDelta < 0)
+        .reduce((s, t) => s + Math.abs(t.creditsDelta!), 0)
 
-      const cost = creditsSold * srv.custoUnitario
+      const cost = creditsConsumed * srv.custoUnitario
       const profit = revenue - cost
+      const margin = revenue > 0 ? (profit / revenue) * 100 : 0
 
-      return { nome: srv.nome, revenue, cost, profit }
+      return { nome: srv.nome, revenue, cost, profit, margin }
     }).filter(s => s.revenue > 0 || s.cost > 0)
-  }, [transactions, servidores, movements, month, year])
+  }, [transactions, servidores, month, year])
 
   return (
     <Card>
@@ -55,6 +56,7 @@ export function ServerProfit({ transactions, servidores, movements, month, year 
                   <th className="pb-2 text-right font-medium">Receita</th>
                   <th className="pb-2 text-right font-medium">Custo créditos</th>
                   <th className="pb-2 text-right font-medium">Lucro est.</th>
+                  <th className="pb-2 text-right font-medium">Margem %</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -65,6 +67,9 @@ export function ServerProfit({ transactions, servidores, movements, month, year 
                     <td className="py-2 text-right text-expense">{formatCurrency(row.cost)}</td>
                     <td className={`py-2 text-right font-semibold ${row.profit >= 0 ? 'text-income' : 'text-expense'}`}>
                       {formatCurrency(row.profit)}
+                    </td>
+                    <td className={`py-2 text-right text-sm ${row.margin >= 50 ? 'text-income' : row.margin >= 20 ? 'text-yellow-400' : 'text-expense'}`}>
+                      {row.margin.toFixed(1)}%
                     </td>
                   </tr>
                 ))}

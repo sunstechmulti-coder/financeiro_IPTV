@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useEffect } from 'react'
-import { Plus, Wallet, LayoutDashboard, List, Settings, Loader2 } from 'lucide-react'
+import { Plus, Wallet, LayoutDashboard, List, Settings, Loader2, BarChart2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SummaryCards } from '@/components/summary-cards'
 import { TransactionsTable } from '@/components/transactions-table'
@@ -10,6 +10,7 @@ import { RevenueHeatmap } from '@/components/revenue-heatmap'
 import { CreditsCard } from '@/components/credits-card'
 import { QuickEntry } from '@/components/quick-entry'
 import { ConfigPage } from '@/components/config/config-page'
+import { AnalyticsPage } from '@/components/analytics/analytics-page'
 import { cn } from '@/lib/utils'
 import type { Transaction } from '@/lib/types'
 import { useSupabaseData } from '@/hooks/use-supabase-data'
@@ -17,11 +18,12 @@ import { createClient } from '@/lib/supabase/client'
 
 const ADMIN_EMAIL = 'admin1@sunstech.com'
 
-type Tab = 'dashboard' | 'transacoes' | 'configuracoes'
+type Tab = 'dashboard' | 'transacoes' | 'analytics' | 'configuracoes'
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: 'dashboard',     label: 'Dashboard',     icon: LayoutDashboard },
   { id: 'transacoes',    label: 'Transações',     icon: List },
+  { id: 'analytics',     label: 'Analytics',      icon: BarChart2 },
   { id: 'configuracoes', label: 'Configurações',  icon: Settings },
 ]
 
@@ -243,6 +245,15 @@ export function CashFlowDashboard() {
                 setDialogOpen(true)
               }}
               onDelete={handleDeleteTransaction}
+            />
+          )}
+
+          {activeTab === 'analytics' && (
+            <AnalyticsPage
+              transactions={transactions}
+              servidores={servidores}
+              movements={movements}
+              planos={planos}
             />
           )}
 

@@ -26,28 +26,35 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
 
   // On mount: check existing session
   useEffect(() => {
+    let cancelled = false
+
     const checkUser = async () => {
       try {
-        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000))
-        const userPromise = supabase.auth.getUser().then(r => r.data.user)
+        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000))
+        const userPromise = supabase.auth.getUser().then(
+          (r) => r.data.user,
+          () => null  // captura erros de rede (Failed to fetch, etc.)
+        )
         const result = await Promise.race([userPromise, timeoutPromise])
-        if (result) {
+        if (!cancelled && result) {
           setUser(result)
           onUserChange?.(result)
         }
-      } catch (err) {
-        console.error('Error checking user session:', err)
+      } catch {
+        // silencia erros de rede — a sessão simplesmente não existe
       } finally {
-        setMounted(true)
+        if (!cancelled) setMounted(true)
       }
     }
     checkUser()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      (event, session) => {
+        if (cancelled) return
         if (session?.user) {
           setUser(session.user)
           onUserChange?.(session.user)
+          setMounted(true)
         } else if (event === 'SIGNED_OUT') {
           setUser(null)
           onUserChange?.(null)
@@ -55,7 +62,10 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
       }
     )
 
-    return () => subscription.unsubscribe()
+    return () => {
+      cancelled = true
+      subscription.unsubscribe()
+    }
   }, [])
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -75,8 +85,18 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
       })
 
       if (error) {
-        if (error.message.includes('Invalid login')) {
+        if (
+          error.message.toLowerCase().includes('invalid login') ||
+          error.message.toLowerCase().includes('invalid credentials') ||
+          error.message.toLowerCase().includes('email not confirmed')
+        ) {
           setError('Email ou senha incorretos.')
+        } else if (
+          error.message.toLowerCase().includes('fetch') ||
+          error.message.toLowerCase().includes('network') ||
+          error.message.toLowerCase().includes('failed')
+        ) {
+          setError('Sem conexão com o servidor. Verifique sua internet.')
         } else {
           setError('Erro ao fazer login. Tente novamente.')
         }
@@ -87,8 +107,13 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
         setUser(data.user)
         onUserChange?.(data.user)
       }
-    } catch {
-      setError('Erro ao fazer login.')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message.toLowerCase() : ''
+      if (msg.includes('fetch') || msg.includes('network') || msg.includes('failed')) {
+        setError('Sem conexão com o servidor. Verifique sua internet.')
+      } else {
+        setError('Erro ao fazer login. Tente novamente.')
+      }
     } finally {
       setLoading(false)
     }

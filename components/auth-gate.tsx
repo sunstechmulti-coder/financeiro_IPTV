@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { createClient } from '@/lib/supabase/client'
+import { createClient, isSupabaseConfigured } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
 
 type Step = 'login' | 'otp' | 'authenticated'
@@ -31,7 +31,30 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
   const [error, setError] = useState('')
   const [resendCooldown, setResendCooldown] = useState(0)
   const otpRefs = useRef<Array<HTMLInputElement | null>>([])
-  const supabase = createClient()
+
+  const configured = isSupabaseConfigured()
+  const supabase = configured ? createClient() : null
+
+  // Se Supabase não estiver configurado, mostra aviso
+  if (!configured) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-destructive/10">
+              <Shield className="h-8 w-8 text-destructive" />
+            </div>
+            <CardTitle className="text-2xl">Configuracao pendente</CardTitle>
+            <CardDescription>
+              As variaveis de ambiente do Supabase nao foram encontradas.
+              Adicione <code className="bg-muted px-1 py-0.5 rounded text-xs">NEXT_PUBLIC_SUPABASE_URL</code> e{' '}
+              <code className="bg-muted px-1 py-0.5 rounded text-xs">NEXT_PUBLIC_SUPABASE_ANON_KEY</code> nas configuracoes do projeto.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    )
+  }
 
   // On mount: check existing session
   useEffect(() => {
@@ -39,7 +62,7 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
       try {
         // Add timeout to prevent infinite loading
         const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000))
-        const userPromise = supabase.auth.getUser().then(r => r.data.user)
+        const userPromise = supabase!.auth.getUser().then(r => r.data.user)
         const result = await Promise.race([userPromise, timeoutPromise])
         if (result) {
           setUser(result)
@@ -54,7 +77,7 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
     }
     checkUser()
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    const { data: { subscription } } = supabase!.auth.onAuthStateChange(
       async (event, session) => {
         if (session?.user) {
           setUser(session.user)
@@ -90,7 +113,7 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
 
     setLoading(true)
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase!.auth.signInWithPassword({
         email: email.toLowerCase().trim(),
         password,
       })
@@ -129,7 +152,7 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
 
     setLoading(true)
     try {
-      const { error } = await supabase.auth.signInWithOtp({
+      const { error } = await supabase!.auth.signInWithOtp({
         email: email.toLowerCase().trim(),
         options: {
           shouldCreateUser: true,
@@ -190,7 +213,7 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
     setError('')
     setLoading(true)
     try {
-      const { data, error } = await supabase.auth.verifyOtp({
+      const { data, error } = await supabase!.auth.verifyOtp({
         email: pendingEmail.toLowerCase().trim(),
         token: code,
         type: 'email',
@@ -226,7 +249,7 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
     setError('')
     setLoading(true)
     try {
-      const { error } = await supabase.auth.signInWithOtp({
+      const { error } = await supabase!.auth.signInWithOtp({
         email: pendingEmail.toLowerCase().trim(),
         options: {
           shouldCreateUser: true,
@@ -249,7 +272,7 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
   }
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
+    await supabase!.auth.signOut()
     setUser(null)
     setStep('login')
     setEmail('')

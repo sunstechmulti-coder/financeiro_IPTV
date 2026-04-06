@@ -42,13 +42,29 @@ export function TopRevenue({ transactions, month, year }: TopRevenueProps) {
         {data.length === 0 ? (
           <p className="py-10 text-center text-sm text-muted-foreground">Nenhuma receita no período.</p>
         ) : (
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={data} layout="vertical" margin={{ top: 0, right: 48, left: 0, bottom: 0 }}>
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={data} layout="vertical" margin={{ top: 4, right: 48, left: 8, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" horizontal={false} />
               <XAxis type="number" tick={{ fontSize: 11, fill: 'var(--color-muted-foreground)' }} tickLine={false} axisLine={false} tickFormatter={(v) => `R$${(v / 1000).toFixed(1)}k`} />
-              <YAxis type="category" dataKey="desc" tick={{ fontSize: 11, fill: 'var(--color-muted-foreground)' }} tickLine={false} axisLine={false} width={80} />
+              <YAxis
+                type="category"
+                dataKey="desc"
+                tick={{ fontSize: 10, fill: 'var(--color-muted-foreground)' }}
+                tickLine={false}
+                axisLine={false}
+                width={150}
+                tickFormatter={(v: string) => v.length > 22 ? v.slice(0, 22) + '…' : v}
+              />
               <Tooltip
-                contentStyle={{ background: 'var(--color-card)', border: '1px solid var(--color-border)', borderRadius: '8px', fontSize: 12 }}
+                contentStyle={{
+                  background: 'var(--color-card)',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: '8px',
+                  fontSize: 12,
+                  color: 'var(--color-card-foreground)',
+                }}
+                labelStyle={{ color: 'var(--color-card-foreground)', fontWeight: 600, marginBottom: 4 }}
+                itemStyle={{ color: 'var(--color-card-foreground)' }}
                 formatter={(value: number, _: string, props: { payload?: { qty: number } }) => [
                   `${formatCurrency(value)} (${props.payload?.qty ?? 0}x)`,
                   'Receita',

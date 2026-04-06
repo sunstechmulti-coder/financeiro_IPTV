@@ -13,6 +13,101 @@ const DEFAULT_SERVIDORES = [
   { nome: 'ATIVA APP', custo_unitario: 13.00, credits_balance: 0, permite_venda_fracionada: true },
 ]
 
+// Função auxiliar para gerar planos de um servidor
+function gerarPlanosServidor(
+  servidorNome: string,
+  sufixoCodigo: string,
+  custoUnitario: number,
+  creditosSemestral: number = 6,
+  creditosAnual: number = 12
+) {
+  const planos = [
+    // Novos
+    { codigo: `NM${sufixoCodigo}`, descricao: `Cliente Novo Mensal ${servidorNome}`, tipo: 'novo', meses: 1, creditos: 1, valor_venda: 30, custo: custoUnitario },
+    { codigo: `NT${sufixoCodigo}`, descricao: `Cliente Novo Trimestral ${servidorNome}`, tipo: 'novo', meses: 3, creditos: 3, valor_venda: 75, custo: custoUnitario * 3 },
+    { codigo: `NS${sufixoCodigo}`, descricao: `Cliente Novo Semestral ${servidorNome}`, tipo: 'novo', meses: 6, creditos: creditosSemestral, valor_venda: 144, custo: custoUnitario * creditosSemestral },
+    { codigo: `NA${sufixoCodigo}`, descricao: `Cliente Novo Anual ${servidorNome}`, tipo: 'novo', meses: 12, creditos: creditosAnual, valor_venda: 264, custo: custoUnitario * creditosAnual },
+    // Renovações
+    { codigo: `RM${sufixoCodigo}`, descricao: `Renovação Mensal ${servidorNome}`, tipo: 'renovacao', meses: 1, creditos: 1, valor_venda: 30, custo: custoUnitario },
+    { codigo: `RT${sufixoCodigo}`, descricao: `Renovação Trimestral ${servidorNome}`, tipo: 'renovacao', meses: 3, creditos: 3, valor_venda: 75, custo: custoUnitario * 3 },
+    { codigo: `RS${sufixoCodigo}`, descricao: `Renovação Semestral ${servidorNome}`, tipo: 'renovacao', meses: 6, creditos: creditosSemestral, valor_venda: 144, custo: custoUnitario * creditosSemestral },
+    { codigo: `RA${sufixoCodigo}`, descricao: `Renovação Anual ${servidorNome}`, tipo: 'renovacao', meses: 12, creditos: creditosAnual, valor_venda: 264, custo: custoUnitario * creditosAnual },
+  ]
+  return planos
+}
+
+// Dados padrão dos planos (56 planos = 7 servidores × 8 variações)
+const DEFAULT_PLANOS_CONFIG = [
+  { servidor: 'BOX', sufixo: 'X', custo: 4.10, creditosSem: 6, creditosAnual: 12 },
+  { servidor: 'BR PRO', sufixo: 'P', custo: 5.00, creditosSem: 6, creditosAnual: 12 },
+  { servidor: 'P2Cine', sufixo: 'C', custo: 5.00, creditosSem: 6, creditosAnual: 12 },
+  { servidor: 'P2BRAZ', sufixo: 'B', custo: 7.00, creditosSem: 5, creditosAnual: 10 },
+  { servidor: 'WAREZ', sufixo: 'W', custo: 7.00, creditosSem: 5, creditosAnual: 10 },
+  { servidor: 'FIRE', sufixo: 'F', custo: 7.00, creditosSem: 5, creditosAnual: 10 },
+  { servidor: 'BRAZIL', sufixo: 'Z', custo: 7.00, creditosSem: 6, creditosAnual: 12 },
+]
+
+// Dados padrão das saídas rápidas (8)
+const DEFAULT_SAIDAS_RAPIDAS = [
+  { nome: 'ATIVA APP', categoria: 'Servidor', servidor: 'ATIVA APP', valor_unitario: 13.00, usa_quantidade: true, descricao_padrao: 'Compra de créditos ATIVA APP' },
+  { nome: 'BOX', categoria: 'Servidor', servidor: 'BOX', valor_unitario: 4.10, usa_quantidade: true, descricao_padrao: 'Compra de créditos BOX' },
+  { nome: 'BR PRO', categoria: 'Servidor', servidor: 'BR PRO', valor_unitario: 5.00, usa_quantidade: true, descricao_padrao: 'Compra de créditos BR PRO' },
+  { nome: 'BRAZIL', categoria: 'Servidor', servidor: 'BRAZIL', valor_unitario: 7.00, usa_quantidade: true, descricao_padrao: 'Compra de créditos BRAZIL' },
+  { nome: 'FIRE', categoria: 'Servidor', servidor: 'FIRE', valor_unitario: 7.00, usa_quantidade: true, descricao_padrao: 'Compra de créditos FIRE' },
+  { nome: 'P2BRAZ', categoria: 'Servidor', servidor: 'P2BRAZ', valor_unitario: 7.00, usa_quantidade: true, descricao_padrao: 'Compra de créditos P2BRAZ' },
+  { nome: 'P2Cine', categoria: 'Servidor', servidor: 'P2Cine', valor_unitario: 5.00, usa_quantidade: true, descricao_padrao: 'Compra de créditos P2Cine' },
+  { nome: 'WAREZ', categoria: 'Servidor', servidor: 'WAREZ', valor_unitario: 7.00, usa_quantidade: true, descricao_padrao: 'Compra de créditos WAREZ' },
+]
+
+// Dados padrão do produto de ativação
+const DEFAULT_ACTIVATION_PRODUCT = {
+  nome: 'ATIVA APP',
+  servidor: 'ATIVA APP',
+  validade_meses: 12,
+  custos_permitidos: [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6],
+  regras_preco: [
+    { custoMin: 0.5, custoMax: 1.0, precoVenda: 20.00 },
+    { custoMin: 1.1, custoMax: 1.9, precoVenda: 25.00 },
+  ],
+}
+
+// Dados padrão dos grupos de revenda (3)
+const DEFAULT_REVENDA_GRUPOS = [
+  {
+    nome: 'BOX',
+    servidores: ['BOX'],
+    faixas: [
+      { min: 10, max: 29, preco: 7.00 },
+      { min: 30, max: 49, preco: 6.50 },
+      { min: 50, max: 99, preco: 6.00 },
+      { min: 100, max: 299, preco: 5.00 },
+      { min: 300, max: 999, preco: 4.50 },
+    ],
+  },
+  {
+    nome: 'FIRE / WAREZ / P2BRAZ / BRAZIL',
+    servidores: ['FIRE', 'WAREZ', 'P2BRAZ', 'BRAZIL'],
+    faixas: [
+      { min: 10, max: 29, preco: 12.00 },
+      { min: 30, max: 49, preco: 10.00 },
+      { min: 50, max: 99, preco: 8.00 },
+      { min: 100, max: 299, preco: 7.00 },
+      { min: 300, max: 999, preco: 6.00 },
+    ],
+  },
+  {
+    nome: 'P2CINE / BR PRO',
+    servidores: ['P2Cine', 'BR PRO'],
+    faixas: [
+      { min: 10, max: 29, preco: 9.00 },
+      { min: 30, max: 49, preco: 8.00 },
+      { min: 50, max: 99, preco: 7.00 },
+      { min: 100, max: 299, preco: 6.00 },
+      { min: 300, max: 999, preco: 5.00 },
+    ],
+  },
+]
+
 // POST /api/migrate - Migrate localStorage data to Supabase for a specific user
 export async function POST(req: Request) {
   try {
@@ -226,14 +321,96 @@ export async function GET(req: Request) {
     return NextResponse.json({ message: 'User already has data', seeded: false })
   }
 
-  // Seed default servidores
-  const { error } = await supabase
-    .from('servidores')
-    .insert(DEFAULT_SERVIDORES.map(s => ({ ...s, user_id: userId })))
+  // 1. Seed servidores e criar mapeamento de nomes para IDs
+  const servidorMap: Record<string, string> = {}
 
-  if (error) {
-    return NextResponse.json({ error: 'Failed to seed data' }, { status: 500 })
+  for (const servidor of DEFAULT_SERVIDORES) {
+    const { data, error } = await supabase
+      .from('servidores')
+      .insert({ ...servidor, user_id: userId })
+      .select('id, nome')
+      .single()
+
+    if (error) {
+      console.error('[seed] Error inserting servidor:', error)
+      continue
+    }
+
+    if (data) {
+      servidorMap[data.nome] = data.id
+    }
   }
 
-  return NextResponse.json({ message: 'Default data seeded', seeded: true })
+  // 2. Seed planos de entrada (56 planos)
+  for (const config of DEFAULT_PLANOS_CONFIG) {
+    const servidorId = servidorMap[config.servidor]
+    if (!servidorId) continue
+
+    const planos = gerarPlanosServidor(
+      config.servidor,
+      config.sufixo,
+      config.custo,
+      config.creditosSem,
+      config.creditosAnual
+    )
+
+    for (const plano of planos) {
+      await supabase.from('planos').insert({
+        user_id: userId,
+        servidor_id: servidorId,
+        ...plano,
+      })
+    }
+  }
+
+  // 3. Seed saídas rápidas (8)
+  for (const saida of DEFAULT_SAIDAS_RAPIDAS) {
+    const serverId = servidorMap[saida.servidor]
+    await supabase.from('saidas_rapidas').insert({
+      user_id: userId,
+      nome: saida.nome,
+      categoria: saida.categoria,
+      server_id: serverId || null,
+      valor_unitario: saida.valor_unitario,
+      usa_quantidade: saida.usa_quantidade,
+      descricao_padrao: saida.descricao_padrao,
+    })
+  }
+
+  // 4. Seed produto de ativação (1)
+  const linkedServerId = servidorMap[DEFAULT_ACTIVATION_PRODUCT.servidor]
+  await supabase.from('activation_products').insert({
+    user_id: userId,
+    nome: DEFAULT_ACTIVATION_PRODUCT.nome,
+    validade_meses: DEFAULT_ACTIVATION_PRODUCT.validade_meses,
+    custos_permitidos: DEFAULT_ACTIVATION_PRODUCT.custos_permitidos,
+    regras_preco: DEFAULT_ACTIVATION_PRODUCT.regras_preco,
+    linked_server_id: linkedServerId || null,
+  })
+
+  // 5. Seed grupos de revenda (3)
+  for (const grupo of DEFAULT_REVENDA_GRUPOS) {
+    const servidorIds = grupo.servidores
+      .map(nome => servidorMap[nome])
+      .filter(Boolean)
+
+    await supabase.from('revenda_grupos').insert({
+      user_id: userId,
+      nome: grupo.nome,
+      servidor_ids: servidorIds,
+      faixas: grupo.faixas,
+    })
+  }
+
+  return NextResponse.json({
+    message: 'Default data seeded',
+    seeded: true,
+    counts: {
+      servidores: DEFAULT_SERVIDORES.length,
+      planos: DEFAULT_PLANOS_CONFIG.length * 8,
+      saidasRapidas: DEFAULT_SAIDAS_RAPIDAS.length,
+      activationProducts: 1,
+      revendaGrupos: DEFAULT_REVENDA_GRUPOS.length,
+    }
+  })
 }

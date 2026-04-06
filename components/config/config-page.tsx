@@ -1,6 +1,6 @@
 'use client'
 
-import { Settings, Server, LayoutList, ArrowDownCircle, Zap, UserCog, DollarSign } from 'lucide-react'
+import { Settings, Server, LayoutList, ArrowDownCircle, Zap, UserCog, DollarSign, Users } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ServidoresList } from '@/components/config/servidores-list'
 import { PlanosList } from '@/components/config/planos-list'
@@ -8,6 +8,7 @@ import { SaidasRapidasList } from '@/components/config/saidas-rapidas-list'
 import { AtivacoesList } from '@/components/config/ativacoes-list'
 import { RevendaConfig } from '@/components/config/revenda-config'
 import { ChangePassword } from '@/components/config/change-password'
+import { AdminUsersPanel } from '@/components/config/admin-users-panel'
 import type { Servidor, PlanoEntrada, SaidaRapida, ActivationProduct, RevendaGrupo } from '@/lib/types'
 
 interface ConfigPageProps {
@@ -31,6 +32,7 @@ interface ConfigPageProps {
   onAddRevendaGrupo: (grupo: Omit<RevendaGrupo, 'id'>) => Promise<RevendaGrupo | null>
   onUpdateRevendaGrupo: (grupo: RevendaGrupo) => Promise<boolean>
   onDeleteRevendaGrupo: (id: string) => Promise<boolean>
+  isAdmin?: boolean
 }
 
 export function ConfigPage({
@@ -54,6 +56,7 @@ export function ConfigPage({
   onAddRevendaGrupo,
   onUpdateRevendaGrupo,
   onDeleteRevendaGrupo,
+  isAdmin = false,
 }: ConfigPageProps) {
   return (
     <div className="space-y-6">
@@ -70,7 +73,7 @@ export function ConfigPage({
       </div>
 
       <Tabs defaultValue="servidores">
-        <TabsList className="grid w-full grid-cols-6 max-w-2xl">
+        <TabsList className={`grid w-full max-w-3xl ${isAdmin ? 'grid-cols-7' : 'grid-cols-6'}`}>
           <TabsTrigger value="servidores" className="gap-1.5">
             <Server className="h-4 w-4" />
             Servidores
@@ -95,6 +98,12 @@ export function ConfigPage({
             <UserCog className="h-4 w-4" />
             Conta
           </TabsTrigger>
+          {isAdmin && (
+            <TabsTrigger value="usuarios" className="gap-1.5">
+              <Users className="h-4 w-4" />
+              Usuários
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="servidores" className="mt-6">
@@ -149,6 +158,12 @@ export function ConfigPage({
         <TabsContent value="conta" className="mt-6">
           <ChangePassword />
         </TabsContent>
+
+        {isAdmin && (
+          <TabsContent value="usuarios" className="mt-6">
+            <AdminUsersPanel />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   )

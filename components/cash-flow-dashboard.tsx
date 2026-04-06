@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Plus, Wallet, LayoutDashboard, List, Settings, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SummaryCards } from '@/components/summary-cards'
@@ -14,6 +14,9 @@ import { ConfigPage } from '@/components/config/config-page'
 import { cn } from '@/lib/utils'
 import type { Transaction } from '@/lib/types'
 import { useSupabaseData } from '@/hooks/use-supabase-data'
+import { createClient } from '@/lib/supabase/client'
+
+const ADMIN_EMAIL = 'admin1@sunstech.com'
 
 type Tab = 'dashboard' | 'transacoes' | 'configuracoes'
 
@@ -24,6 +27,19 @@ const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
 ]
 
 export function CashFlowDashboard() {
+  const [isAdmin, setIsAdmin] = useState(false)
+  const supabase = createClient()
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setIsAdmin(data.user?.email === ADMIN_EMAIL)
+    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAdmin(session?.user?.email === ADMIN_EMAIL)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
   const {
     transactions,
     servidores,
@@ -258,6 +274,7 @@ export function CashFlowDashboard() {
               onAddRevendaGrupo={addRevendaGrupo}
               onUpdateRevendaGrupo={updateRevendaGrupo}
               onDeleteRevendaGrupo={deleteRevendaGrupo}
+              isAdmin={isAdmin}
             />
           )}
         </div>

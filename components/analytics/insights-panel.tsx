@@ -100,15 +100,15 @@ export function InsightsPanel({ transactions, month, year }: InsightsPanelProps)
         <CardTitle className="text-sm font-medium text-muted-foreground">Insights Automáticos</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {items.map(({ icon: Icon, iconClass, label, value }) => (
-            <div key={label} className="flex items-start gap-3 rounded-lg border border-border bg-muted/20 p-3">
-              <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-card">
-                <Icon className={`h-4 w-4 ${iconClass}`} />
+            <div key={label} className="flex items-center gap-3 rounded-lg border border-border bg-muted/20 px-3 py-2.5">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-card">
+                <Icon className={`h-3.5 w-3.5 ${iconClass}`} />
               </div>
-              <div className="min-w-0">
-                <p className="text-xs text-muted-foreground">{label}</p>
-                <p className="truncate text-sm font-semibold" title={value}>{value}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs text-muted-foreground leading-tight">{label}</p>
+                <p className="break-words text-sm font-semibold leading-snug">{value}</p>
               </div>
             </div>
           ))}

@@ -68,7 +68,7 @@ export function TransactionDialog({
   // Common fields
   const [date, setDate] = useState<Date | undefined>(new Date())
   const [calendarOpen, setCalendarOpen] = useState(false)
-  const [modo, setModo] = useState<'rapido' | 'ativacao' | 'manual'>('rapido')
+  const [modo, setModo] = useState<'rapido' | 'ativacao' | 'revenda' | 'manual'>('rapido')
 
   // Type toggle (rapido mode)
   const [type, setType] = useState<'income' | 'expense'>('income')
@@ -94,6 +94,80 @@ export function TransactionDialog({
   const [activationProductId, setActivationProductId] = useState('')
   const [activationCusto, setActivationCusto] = useState<number | null>(null)
   const [registrarCustoAtivacao, setRegistrarCustoAtivacao] = useState(false)
+
+  // Revenda de créditos
+  const [revendaServidorId, setRevendaServidorId] = useState('')
+  const [revendaQtd, setRevendaQtd] = useState('')
+  const [revendaValorOverride, setRevendaValorOverride] = useState('')
+
+  // ── Pricing tiers for credit resale ────────────────────────────────────────
+  type PriceTier = { min: number; max: number; price: number }
+  type ServerGroup = { servers: string[]; tiers: PriceTier[] }
+
+  const REVENDA_GROUPS: ServerGroup[] = [
+    {
+      servers: ['FIRE', 'WAREZ', 'P2BRAZ', 'BRAZIL'],
+      tiers: [
+        { min: 10, max: 29, price: 12 },
+        { min: 30, max: 49, price: 10 },
+        { min: 50, max: 99, price: 8 },
+        { min: 100, max: 299, price: 7 },
+        { min: 300, max: 999, price: 6 },
+      ],
+    },
+    {
+      servers: ['P2CINE', 'P2Cine', 'BR PRO'],
+      tiers: [
+        { min: 10, max: 29, price: 9 },
+        { min: 30, max: 49, price: 8 },
+        { min: 50, max: 99, price: 7 },
+        { min: 100, max: 299, price: 6 },
+        { min: 300, max: 999, price: 5 },
+      ],
+    },
+    {
+      servers: ['BOX'],
+      tiers: [
+        { min: 10, max: 29, price: 7 },
+        { min: 30, max: 49, price: 6.5 },
+        { min: 50, max: 99, price: 6 },
+        { min: 100, max: 299, price: 5 },
+        { min: 300, max: 999, price: 4.5 },
+      ],
+    },
+  ]
+
+  const revendaServidor = servidores.find(s => s.id === revendaServidorId)
+  const revendaQtdNum = parseFloat(revendaQtd.replace(',', '.')) || 0
+
+  const getRevendaGroup = (serverName: string): ServerGroup | null => {
+    return REVENDA_GROUPS.find(g =>
+      g.servers.some(s => s.toUpperCase() === serverName.toUpperCase())
+    ) ?? null
+  }
+
+  const getRevendaPricePerCredit = (serverName: string, qty: number): number => {
+    const group = getRevendaGroup(serverName)
+    if (!group) return 0
+    const tier = group.tiers.find(t => qty >= t.min && qty <= t.max)
+    if (tier) return tier.price
+    // If above max tier, use last tier price
+    if (qty > 999) return group.tiers[group.tiers.length - 1].price
+    return 0
+  }
+
+  const revendaPricePerCredit = revendaServidor
+    ? getRevendaPricePerCredit(revendaServidor.nome, revendaQtdNum)
+    : 0
+
+  const revendaValorCalculado = revendaPricePerCredit * revendaQtdNum
+  const revendaValorFinal = revendaValorOverride
+    ? (parseFloat(revendaValorOverride.replace(',', '.')) || 0)
+    : revendaValorCalculado
+  const revendaSaldoAtual = revendaServidor?.creditsBalance ?? 0
+  const revendaSaldoRestante = revendaSaldoAtual - revendaQtdNum
+  const revendaInsuficiente = revendaQtdNum > 0 && revendaSaldoRestante < 0
+  const revendaGroupInfo = revendaServidor ? getRevendaGroup(revendaServidor.nome) : null
 
   // ── Derived ──────────────────────────────────────────────────────────────────
 
@@ -193,6 +267,9 @@ export function TransactionDialog({
       setActivationProductId('')
       setActivationCusto(null)
       setRegistrarCustoAtivacao(false)
+      setRevendaServidorId('')
+      setRevendaQtd('')
+      setRevendaValorOverride('')
     }
   }, [transaction, open])
 
@@ -209,6 +286,19 @@ export function TransactionDialog({
   useEffect(() => {
     setActivationCusto(null)
   }, [activationProductId])
+
+  useEffect(() => {
+    setRevendaQtd('')
+    setRevendaValorOverride('')
+  }, [revendaServidorId])
+
+  useEffect(() => {
+    if (revendaValorCalculado > 0) {
+      setRevendaValorOverride(revendaValorCalculado.toFixed(2).replace('.', ','))
+    } else {
+      setRevendaValorOverride('')
+    }
+  }, [revendaQtdNum, revendaPricePerCredit])
 
   useEffect(() => {
     setQtdSaida(1)
@@ -234,13 +324,16 @@ export function TransactionDialog({
     activationSalePrice > 0 &&
     !activationInsufficient
 
+  const isRevendaValid =
+    modo === 'revenda' && revendaServidor && revendaQtdNum >= 10 && revendaValorFinal > 0 && !revendaInsuficiente
+
   const isManualValid =
     modo === 'manual' &&
     !!date &&
     description.trim().length > 0 &&
     parseFloat((amount || '0').replace(',', '.')) > 0
 
-  const isValid = isEntradaRapidaValid || isSaidaRapidaValid || isAtivacaoValid || isManualValid
+  const isValid = isEntradaRapidaValid || isSaidaRapidaValid || isAtivacaoValid || isRevendaValid || isManualValid
 
   // ── Save ───────────────────────────────────────────────────────────────────
 
@@ -289,6 +382,31 @@ export function TransactionDialog({
       onOpenChange(false)
       return
     }
+
+    // ── Revenda de créditos ──────────────────────────────────────────────────
+    if (isRevendaValid && revendaServidor) {
+      const descricao = `Revenda ${revendaQtdNum} créditos — ${revendaServidor.nome}`
+
+      const income: Transaction = {
+        id: generateId(),
+        date: dateStr,
+        type: 'income',
+        description: descricao,
+        amount: revendaValorFinal,
+        createdAt: now,
+        serverId: revendaServidorId,
+        creditsDelta: -revendaQtdNum,
+      }
+
+      if (onAdjustCredits) {
+        await onAdjustCredits(revendaServidorId, -revendaQtdNum)
+      }
+
+      onSave(income)
+      onOpenChange(false)
+      return
+    }
+
 
     // ── Saída rápida ─────────────────────────────────────────────────────────
     if (isSaidaRapidaValid && selectedSaida) {
@@ -418,13 +536,14 @@ export function TransactionDialog({
         </div>
 
         {!transaction ? (
-          <Tabs value={modo} onValueChange={(v) => setModo(v as 'rapido' | 'ativacao' | 'manual')}>
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="rapido">Lançamento Rápido</TabsTrigger>
+          <Tabs value={modo} onValueChange={(v) => setModo(v as 'rapido' | 'ativacao' | 'revenda' | 'manual')}>
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="rapido">Rápido</TabsTrigger>
               <TabsTrigger value="ativacao" className="gap-1">
                 <Zap className="h-3.5 w-3.5" />
                 Ativação
               </TabsTrigger>
+              <TabsTrigger value="revenda">Revenda</TabsTrigger>
               <TabsTrigger value="manual">Manual</TabsTrigger>
             </TabsList>
 
@@ -921,6 +1040,126 @@ export function TransactionDialog({
                       <label htmlFor="registrar-custo-ativacao" className="text-sm leading-none">
                         Registrar custo automaticamente como saída
                       </label>
+                    </div>
+                  )}
+                </>
+              )}
+            </TabsContent>
+
+
+            {/* ── REVENDA DE CRÉDITOS ── */}
+            <TabsContent value="revenda" className="space-y-4 mt-4">
+              {/* Servidor */}
+              <div className="grid gap-2">
+                <Label>Servidor</Label>
+                <Select value={revendaServidorId} onValueChange={setRevendaServidorId}>
+                  <SelectTrigger data-testid="revenda-server-select">
+                    <SelectValue placeholder="Selecione o servidor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {servidores.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.nome} — {s.creditsBalance ?? 0} créditos
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Pricing tier info */}
+              {revendaServidor && revendaGroupInfo && (
+                <div className="rounded-md border bg-muted/30 p-3 space-y-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">Tabela de preços — {revendaServidor.nome}</span>
+                  <div className="grid grid-cols-5 gap-1 text-center">
+                    {revendaGroupInfo.tiers.map((t) => (
+                      <div key={t.min} className={cn(
+                        'rounded px-1.5 py-1 text-xs border',
+                        revendaQtdNum >= t.min && revendaQtdNum <= t.max
+                          ? 'bg-primary/15 border-primary/40 text-primary font-medium'
+                          : 'border-transparent text-muted-foreground'
+                      )}>
+                        <div className="font-mono">{t.min}-{t.max}</div>
+                        <div className="font-medium">R${t.price.toFixed(2).replace('.', ',')}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {revendaServidor && !revendaGroupInfo && (
+                <div className="flex items-center gap-2 text-sm text-amber-500">
+                  <AlertCircle className="h-4 w-4" />
+                  Servidor sem tabela de revenda configurada.
+                </div>
+              )}
+
+              {/* Quantity */}
+              {revendaServidor && revendaGroupInfo && (
+                <>
+                  <div className="grid gap-2">
+                    <Label>Quantidade de créditos</Label>
+                    <Input
+                      type="number"
+                      min={10}
+                      step={1}
+                      placeholder="Mínimo 10 créditos"
+                      value={revendaQtd}
+                      onChange={(e) => setRevendaQtd(e.target.value)}
+                      data-testid="revenda-qty"
+                    />
+                    {revendaQtdNum > 0 && revendaQtdNum < 10 && (
+                      <p className="text-xs text-amber-500">Mínimo de 10 créditos</p>
+                    )}
+                  </div>
+
+                  {/* Value override */}
+                  {revendaQtdNum >= 10 && (
+                    <div className="grid gap-2">
+                      <Label>Valor total (R$)</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">R$</span>
+                        <Input
+                          className="pl-9"
+                          value={revendaValorOverride}
+                          onChange={(e) => setRevendaValorOverride(e.target.value.replace(/[^\d,\.]/g, ''))}
+                          data-testid="revenda-value"
+                        />
+                      </div>
+                      {revendaValorFinal !== revendaValorCalculado && revendaValorFinal > 0 && (
+                        <p className="text-xs text-amber-500">
+                          Valor calculado: {formatCurrency(revendaValorCalculado)} ({formatCurrency(revendaPricePerCredit)}/cr)
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Insufficient credits */}
+                  {revendaInsuficiente && (
+                    <div className="flex items-center gap-2 text-sm text-destructive">
+                      <AlertCircle className="h-4 w-4" />
+                      Créditos insuficientes — disponível: {revendaSaldoAtual}, necessário: {revendaQtdNum}
+                    </div>
+                  )}
+
+                  {/* Summary */}
+                  {revendaQtdNum >= 10 && revendaValorFinal > 0 && !revendaInsuficiente && (
+                    <div className="rounded-lg border bg-muted/40 p-4 space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Créditos vendidos:</span>
+                        <span>{revendaQtdNum}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Preço/crédito:</span>
+                        <span>{formatCurrency(revendaValorFinal / revendaQtdNum)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm font-medium">
+                        <span className="text-muted-foreground">Total entrada:</span>
+                        <span className="text-income">{formatCurrency(revendaValorFinal)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm text-muted-foreground">
+                        <span>Saldo após:</span>
+                        <span className="tabular-nums">{revendaSaldoRestante} créditos</span>
+                      </div>
                     </div>
                   )}
                 </>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useEffect } from 'react'
-import { Plus, Wallet, LayoutDashboard, List, Settings, Loader2, BarChart2 } from 'lucide-react'
+import { Plus, Wallet, LayoutDashboard, List, Settings, Loader2, BarChart2, Mail, LogOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SummaryCards } from '@/components/summary-cards'
 import { TransactionsTable } from '@/components/transactions-table'
@@ -27,7 +27,13 @@ const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: 'configuracoes', label: 'Configurações',  icon: Settings },
 ]
 
-export function CashFlowDashboard() {
+export function CashFlowDashboard({
+  userEmail,
+  onLogout,
+}: {
+  userEmail?: string | null
+  onLogout?: () => Promise<void>
+}) {
   const [isAdmin, setIsAdmin] = useState(false)
   const supabase = createClient()
 
@@ -137,6 +143,24 @@ export function CashFlowDashboard() {
           <div className="flex items-center gap-2 font-semibold">
             <Wallet className="h-5 w-5 text-primary" />
             <span>Cash Flow</span>
+            {userEmail && (
+              <div className="flex items-center gap-1 ml-2 pl-2 border-l border-border">
+                <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <span className="text-xs text-muted-foreground font-normal truncate max-w-[140px] hidden sm:inline">
+                  {userEmail}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onLogout}
+                  className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                  title="Sair"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                  <span className="sr-only">Sair</span>
+                </Button>
+              </div>
+            )}
           </div>
 
           {/* Navigation tabs */}

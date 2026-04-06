@@ -52,6 +52,10 @@ export function CashFlowDashboard() {
     addActivationProduct,
     updateActivationProduct,
     deleteActivationProduct,
+    revendaGrupos,
+    addRevendaGrupo,
+    updateRevendaGrupo,
+    deleteRevendaGrupo,
     refreshData,
   } = useSupabaseData()
 
@@ -250,6 +254,10 @@ export function CashFlowDashboard() {
               onAddActivationProduct={addActivationProduct}
               onUpdateActivationProduct={updateActivationProduct}
               onDeleteActivationProduct={deleteActivationProduct}
+              revendaGrupos={revendaGrupos}
+              onAddRevendaGrupo={addRevendaGrupo}
+              onUpdateRevendaGrupo={updateRevendaGrupo}
+              onDeleteRevendaGrupo={deleteRevendaGrupo}
             />
           )}
         </div>
@@ -264,6 +272,7 @@ export function CashFlowDashboard() {
         planos={planos}
         saidasRapidas={saidasRapidas}
         activationProducts={activationProducts}
+        revendaGrupos={revendaGrupos}
         onSave={handleSaveTransaction}
         onAdjustCredits={adjustCreditsBalance}
       />

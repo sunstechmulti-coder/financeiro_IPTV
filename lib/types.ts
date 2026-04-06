@@ -83,3 +83,19 @@ export interface ActivationTransaction {
   transactionId: string  // referência para a Transaction de income
   createdAt: string
 }
+
+// ─── Revenda de Créditos ─────────────────────────────────────────────────────
+
+export interface RevendaFaixa {
+  min: number
+  max: number
+  preco: number
+}
+
+export interface RevendaGrupo {
+  id: string
+  nome: string
+  servidorIds: string[]
+  faixas: RevendaFaixa[]
+}
+

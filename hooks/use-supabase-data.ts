@@ -9,7 +9,9 @@ import type {
   SaidaRapida, 
   CreditMovement,
   ActivationProduct,
-  ActivationTransaction
+  ActivationTransaction,
+  RevendaGrupo,
+  RevendaFaixa,
 } from '@/lib/types'
 
 // Hook to manage all Supabase data with real-time sync
@@ -21,6 +23,7 @@ export function useSupabaseData() {
   const [creditMovements, setCreditMovements] = useState<CreditMovement[]>([])
   const [activationProducts, setActivationProducts] = useState<ActivationProduct[]>([])
   const [activationTransactions, setActivationTransactions] = useState<ActivationTransaction[]>([])
+  const [revendaGrupos, setRevendaGrupos] = useState<RevendaGrupo[]>([])
   const [loading, setLoading] = useState(true)
   const [userId, setUserId] = useState<string | null>(null)
   
@@ -103,6 +106,25 @@ export function useSupabaseData() {
     
     if (actTxData) {
       setActivationTransactions(actTxData.map(mapActivationTransactionFromDB))
+    }
+
+    // Fetch revenda grupos
+    const { data: revendaData } = await supabase
+      .from('revenda_grupos')
+      .select('*')
+      .order('nome')
+    
+    if (revendaData) {
+      setRevendaGrupos(revendaData.map((r: Record<string, unknown>) => ({
+        id: r.id as string,
+        nome: r.nome as string,
+        servidorIds: (r.servidor_ids as string[]) || [],
+        faixas: ((r.faixas as Array<Record<string, number>>) || []).map(f => ({
+          min: f.min,
+          max: f.max,
+          preco: f.preco,
+        })),
+      })))
     }
 
     setLoading(false)
@@ -546,6 +568,58 @@ export function useSupabaseData() {
     return activationTransactions.find(a => a.transactionId === transactionId)
   }
 
+  // ── Revenda Grupo operations ───────────────────────────────────────────────
+
+  const addRevendaGrupo = async (grupo: Omit<RevendaGrupo, 'id'>): Promise<RevendaGrupo | null> => {
+    if (!userId) return null
+    const { data, error } = await supabase
+      .from('revenda_grupos')
+      .insert({
+        user_id: userId,
+        nome: grupo.nome,
+        servidor_ids: grupo.servidorIds,
+        faixas: grupo.faixas,
+      })
+      .select()
+      .single()
+    if (error || !data) return null
+    const newGrupo: RevendaGrupo = {
+      id: data.id,
+      nome: data.nome,
+      servidorIds: data.servidor_ids || [],
+      faixas: (data.faixas || []).map((f: Record<string, number>) => ({ min: f.min, max: f.max, preco: f.preco })),
+    }
+    setRevendaGrupos(prev => [...prev, newGrupo])
+    return newGrupo
+  }
+
+  const updateRevendaGrupo = async (grupo: RevendaGrupo): Promise<boolean> => {
+    if (!userId) return false
+    const { error } = await supabase
+      .from('revenda_grupos')
+      .update({
+        nome: grupo.nome,
+        servidor_ids: grupo.servidorIds,
+        faixas: grupo.faixas,
+      })
+      .eq('id', grupo.id)
+    if (error) return false
+    setRevendaGrupos(prev => prev.map(g => g.id === grupo.id ? grupo : g))
+    return true
+  }
+
+  const deleteRevendaGrupo = async (id: string): Promise<boolean> => {
+    if (!userId) return false
+    const { error } = await supabase
+      .from('revenda_grupos')
+      .delete()
+      .eq('id', id)
+    if (error) return false
+    setRevendaGrupos(prev => prev.filter(g => g.id !== id))
+    return true
+  }
+
+
   return {
     // Data
     transactions,
@@ -555,6 +629,7 @@ export function useSupabaseData() {
     creditMovements,
     activationProducts,
     activationTransactions,
+    revendaGrupos,
     loading,
     userId,
     
@@ -595,6 +670,11 @@ export function useSupabaseData() {
     addActivationTransaction,
     removeActivationTransactionByTransactionId,
     getActivationTransactionByTransactionId,
+
+    // Revenda Grupo operations
+    addRevendaGrupo,
+    updateRevendaGrupo,
+    deleteRevendaGrupo,
   }
 }
 

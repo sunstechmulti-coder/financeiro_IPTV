@@ -33,7 +33,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Checkbox } from '@/components/ui/checkbox'
 import { cn } from '@/lib/utils'
-import type { Transaction, ActivationProduct, Servidor, PlanoEntrada, SaidaRapida } from '@/lib/types'
+import type { Transaction, ActivationProduct, Servidor, PlanoEntrada, SaidaRapida, RevendaGrupo } from '@/lib/types'
 import { generateId } from '@/lib/storage'
 import { getSalePrice } from '@/lib/activation-storage'
 
@@ -50,6 +50,7 @@ interface TransactionDialogProps {
   planos: PlanoEntrada[]
   saidasRapidas: SaidaRapida[]
   activationProducts: ActivationProduct[]
+  revendaGrupos?: RevendaGrupo[]
 }
 
 export function TransactionDialog({
@@ -63,6 +64,7 @@ export function TransactionDialog({
   planos,
   saidasRapidas,
   activationProducts,
+  revendaGrupos = [],
 }: TransactionDialogProps) {
 
   // Common fields
@@ -100,64 +102,28 @@ export function TransactionDialog({
   const [revendaQtd, setRevendaQtd] = useState('')
   const [revendaValorOverride, setRevendaValorOverride] = useState('')
 
-  // ── Pricing tiers for credit resale ────────────────────────────────────────
-  type PriceTier = { min: number; max: number; price: number }
-  type ServerGroup = { servers: string[]; tiers: PriceTier[] }
-
-  const REVENDA_GROUPS: ServerGroup[] = [
-    {
-      servers: ['FIRE', 'WAREZ', 'P2BRAZ', 'BRAZIL'],
-      tiers: [
-        { min: 10, max: 29, price: 12 },
-        { min: 30, max: 49, price: 10 },
-        { min: 50, max: 99, price: 8 },
-        { min: 100, max: 299, price: 7 },
-        { min: 300, max: 999, price: 6 },
-      ],
-    },
-    {
-      servers: ['P2CINE', 'P2Cine', 'BR PRO'],
-      tiers: [
-        { min: 10, max: 29, price: 9 },
-        { min: 30, max: 49, price: 8 },
-        { min: 50, max: 99, price: 7 },
-        { min: 100, max: 299, price: 6 },
-        { min: 300, max: 999, price: 5 },
-      ],
-    },
-    {
-      servers: ['BOX'],
-      tiers: [
-        { min: 10, max: 29, price: 7 },
-        { min: 30, max: 49, price: 6.5 },
-        { min: 50, max: 99, price: 6 },
-        { min: 100, max: 299, price: 5 },
-        { min: 300, max: 999, price: 4.5 },
-      ],
-    },
-  ]
+  // ── Pricing from Supabase ───────────────────────────────────────────────────
 
   const revendaServidor = servidores.find(s => s.id === revendaServidorId)
   const revendaQtdNum = parseFloat(revendaQtd.replace(',', '.')) || 0
 
-  const getRevendaGroup = (serverName: string): ServerGroup | null => {
-    return REVENDA_GROUPS.find(g =>
-      g.servers.some(s => s.toUpperCase() === serverName.toUpperCase())
-    ) ?? null
+  const getRevendaGroupForServer = (serverId: string): RevendaGrupo | null => {
+    return revendaGrupos.find(g => g.servidorIds.includes(serverId)) ?? null
   }
 
-  const getRevendaPricePerCredit = (serverName: string, qty: number): number => {
-    const group = getRevendaGroup(serverName)
+  const getRevendaPricePerCredit = (serverId: string, qty: number): number => {
+    const group = getRevendaGroupForServer(serverId)
     if (!group) return 0
-    const tier = group.tiers.find(t => qty >= t.min && qty <= t.max)
-    if (tier) return tier.price
+    const tier = group.faixas.find(t => qty >= t.min && qty <= t.max)
+    if (tier) return tier.preco
     // If above max tier, use last tier price
-    if (qty > 999) return group.tiers[group.tiers.length - 1].price
+    const lastTier = group.faixas[group.faixas.length - 1]
+    if (lastTier && qty > lastTier.max) return lastTier.preco
     return 0
   }
 
   const revendaPricePerCredit = revendaServidor
-    ? getRevendaPricePerCredit(revendaServidor.nome, revendaQtdNum)
+    ? getRevendaPricePerCredit(revendaServidor.id, revendaQtdNum)
     : 0
 
   const revendaValorCalculado = revendaPricePerCredit * revendaQtdNum
@@ -167,7 +133,7 @@ export function TransactionDialog({
   const revendaSaldoAtual = revendaServidor?.creditsBalance ?? 0
   const revendaSaldoRestante = revendaSaldoAtual - revendaQtdNum
   const revendaInsuficiente = revendaQtdNum > 0 && revendaSaldoRestante < 0
-  const revendaGroupInfo = revendaServidor ? getRevendaGroup(revendaServidor.nome) : null
+  const revendaGroupInfo = revendaServidor ? getRevendaGroupForServer(revendaServidor.id) : null
 
   // ── Derived ──────────────────────────────────────────────────────────────────
 
@@ -1071,7 +1037,7 @@ export function TransactionDialog({
                 <div className="rounded-md border bg-muted/30 p-3 space-y-1.5">
                   <span className="text-xs font-medium text-muted-foreground">Tabela de preços — {revendaServidor.nome}</span>
                   <div className="grid grid-cols-5 gap-1 text-center">
-                    {revendaGroupInfo.tiers.map((t) => (
+                    {revendaGroupInfo.faixas.map((t) => (
                       <div key={t.min} className={cn(
                         'rounded px-1.5 py-1 text-xs border',
                         revendaQtdNum >= t.min && revendaQtdNum <= t.max
@@ -1079,7 +1045,7 @@ export function TransactionDialog({
                           : 'border-transparent text-muted-foreground'
                       )}>
                         <div className="font-mono">{t.min}-{t.max}</div>
-                        <div className="font-medium">R${t.price.toFixed(2).replace('.', ',')}</div>
+                        <div className="font-medium">R${t.preco.toFixed(2).replace('.', ',')}</div>
                       </div>
                     ))}
                   </div>

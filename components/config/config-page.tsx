@@ -1,13 +1,14 @@
 'use client'
 
-import { Settings, Server, LayoutList, ArrowDownCircle, Zap, UserCog } from 'lucide-react'
+import { Settings, Server, LayoutList, ArrowDownCircle, Zap, UserCog, DollarSign } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ServidoresList } from '@/components/config/servidores-list'
 import { PlanosList } from '@/components/config/planos-list'
 import { SaidasRapidasList } from '@/components/config/saidas-rapidas-list'
 import { AtivacoesList } from '@/components/config/ativacoes-list'
+import { RevendaConfig } from '@/components/config/revenda-config'
 import { ChangePassword } from '@/components/config/change-password'
-import type { Servidor, PlanoEntrada, SaidaRapida, ActivationProduct } from '@/lib/types'
+import type { Servidor, PlanoEntrada, SaidaRapida, ActivationProduct, RevendaGrupo } from '@/lib/types'
 
 interface ConfigPageProps {
   servidores: Servidor[]
@@ -26,6 +27,10 @@ interface ConfigPageProps {
   onAddActivationProduct: (product: Omit<ActivationProduct, 'id'>) => Promise<ActivationProduct | null>
   onUpdateActivationProduct: (product: ActivationProduct) => Promise<ActivationProduct | null>
   onDeleteActivationProduct: (id: string) => Promise<boolean>
+  revendaGrupos: RevendaGrupo[]
+  onAddRevendaGrupo: (grupo: Omit<RevendaGrupo, 'id'>) => Promise<RevendaGrupo | null>
+  onUpdateRevendaGrupo: (grupo: RevendaGrupo) => Promise<boolean>
+  onDeleteRevendaGrupo: (id: string) => Promise<boolean>
 }
 
 export function ConfigPage({
@@ -45,6 +50,10 @@ export function ConfigPage({
   onAddActivationProduct,
   onUpdateActivationProduct,
   onDeleteActivationProduct,
+  revendaGrupos,
+  onAddRevendaGrupo,
+  onUpdateRevendaGrupo,
+  onDeleteRevendaGrupo,
 }: ConfigPageProps) {
   return (
     <div className="space-y-6">
@@ -61,7 +70,7 @@ export function ConfigPage({
       </div>
 
       <Tabs defaultValue="servidores">
-        <TabsList className="grid w-full grid-cols-5 max-w-2xl">
+        <TabsList className="grid w-full grid-cols-6 max-w-2xl">
           <TabsTrigger value="servidores" className="gap-1.5">
             <Server className="h-4 w-4" />
             Servidores
@@ -77,6 +86,10 @@ export function ConfigPage({
           <TabsTrigger value="ativacoes" className="gap-1.5">
             <Zap className="h-4 w-4" />
             Ativações
+          </TabsTrigger>
+          <TabsTrigger value="revenda" className="gap-1.5">
+            <DollarSign className="h-4 w-4" />
+            Revenda
           </TabsTrigger>
           <TabsTrigger value="conta" className="gap-1.5">
             <UserCog className="h-4 w-4" />
@@ -120,6 +133,16 @@ export function ConfigPage({
             onAdd={onAddActivationProduct}
             onUpdate={onUpdateActivationProduct}
             onDelete={onDeleteActivationProduct}
+          />
+        </TabsContent>
+
+        <TabsContent value="revenda" className="mt-6">
+          <RevendaConfig
+            grupos={revendaGrupos}
+            servidores={servidores}
+            onAdd={onAddRevendaGrupo}
+            onUpdate={onUpdateRevendaGrupo}
+            onDelete={onDeleteRevendaGrupo}
           />
         </TabsContent>
 

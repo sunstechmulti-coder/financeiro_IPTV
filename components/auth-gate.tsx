@@ -176,7 +176,7 @@ export function AuthGate({ children, onUserChange, onSubscriptionChange }: AuthG
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="flex items-center gap-2 text-muted-foreground">
-          <Wallet className="h-5 w-5 animate-pulse" />
+          <img src="/logo.jpg" alt="Cash Flow" className="h-5 w-5 rounded animate-pulse" />
           <span>Carregando...</span>
         </div>
       </div>
@@ -225,10 +225,10 @@ export function AuthGate({ children, onUserChange, onSubscriptionChange }: AuthG
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-primary">
-            <Wallet className="h-8 w-8 text-primary-foreground" />
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl overflow-hidden">
+            <img src="/logo.jpg" alt="Cash Flow" className="h-14 w-14 object-cover" />
           </div>
-          <CardTitle className="text-2xl">Financeiro IPTV</CardTitle>
+          <CardTitle className="text-2xl">Cash Flow</CardTitle>
           <CardDescription>
             Controle suas finanças de forma simples e segura
           </CardDescription>

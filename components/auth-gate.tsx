@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Wallet, Mail, ArrowRight, LogOut, Lock, Eye, EyeOff } from 'lucide-react'
+import { Wallet, Mail, ArrowRight, Lock, Eye, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -143,21 +143,6 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
   if (user) {
     return (
       <div className="relative">
-        <div className="fixed top-0 right-0 z-50 m-2 sm:m-4">
-          <div className="flex items-center gap-1.5 sm:gap-2 rounded-lg border bg-card/95 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm shadow-sm backdrop-blur max-w-[200px] sm:max-w-none">
-            <Mail className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground shrink-0" />
-            <span className="text-muted-foreground truncate hidden sm:inline max-w-[180px]">{user.email}</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleLogout}
-              className="h-6 sm:h-7 px-1.5 sm:px-2 text-muted-foreground hover:text-foreground"
-            >
-              <LogOut className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-              <span className="sr-only">Sair</span>
-            </Button>
-          </div>
-        </div>
         {children}
       </div>
     )

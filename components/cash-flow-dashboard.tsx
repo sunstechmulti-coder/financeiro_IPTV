@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useEffect } from 'react'
-import { Plus, Wallet, LayoutDashboard, List, Settings, Loader2, BarChart2 } from 'lucide-react'
+import { Plus, Wallet, LayoutDashboard, List, Settings, Loader2, BarChart2, Mail, LogOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SummaryCards } from '@/components/summary-cards'
 import { TransactionsTable } from '@/components/transactions-table'
@@ -29,17 +29,24 @@ const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
 
 export function CashFlowDashboard() {
   const [isAdmin, setIsAdmin] = useState(false)
+  const [userEmail, setUserEmail] = useState<string | null>(null)
   const supabase = createClient()
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       setIsAdmin(data.user?.email === ADMIN_EMAIL)
+      setUserEmail(data.user?.email ?? null)
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setIsAdmin(session?.user?.email === ADMIN_EMAIL)
+      setUserEmail(session?.user?.email ?? null)
     })
     return () => subscription.unsubscribe()
   }, [])
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+  }
 
   const {
     transactions,
@@ -137,6 +144,24 @@ export function CashFlowDashboard() {
           <div className="flex items-center gap-2 font-semibold">
             <Wallet className="h-5 w-5 text-primary" />
             <span>Cash Flow</span>
+            {userEmail && (
+              <div className="flex items-center gap-1 ml-2 pl-2 border-l border-border">
+                <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <span className="text-xs text-muted-foreground font-normal truncate max-w-[140px] hidden sm:inline">
+                  {userEmail}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleLogout}
+                  className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                  title="Sair"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                  <span className="sr-only">Sair</span>
+                </Button>
+              </div>
+            )}
           </div>
 
           {/* Navigation tabs */}

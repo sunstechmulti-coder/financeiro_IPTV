@@ -176,7 +176,7 @@ export function AuthGate({ children, onUserChange, onSubscriptionChange }: AuthG
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="flex items-center gap-2 text-muted-foreground">
-          <img src="/logo.jpg" alt="Cash Flow" className="h-5 w-5 rounded animate-pulse" />
+          <img src="/logo.png" alt="Cash Flow" className="h-5 w-5 rounded animate-pulse" />
           <span>Carregando...</span>
         </div>
       </div>
@@ -226,7 +226,7 @@ export function AuthGate({ children, onUserChange, onSubscriptionChange }: AuthG
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl overflow-hidden">
-            <img src="/logo.jpg" alt="Cash Flow" className="h-14 w-14 object-cover" />
+            <img src="/logo.png" alt="Cash Flow" className="h-14 w-14 object-contain" />
           </div>
           <CardTitle className="text-2xl">Cash Flow</CardTitle>
           <CardDescription>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Wallet, Mail, ArrowRight, Lock, Eye, EyeOff } from 'lucide-react'
+import { Wallet, Mail, ArrowRight, Lock, Eye, EyeOff, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -9,20 +9,52 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { createClient } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
 
+interface Subscription {
+  id: string
+  user_id: string
+  plan_type: string
+  started_at: string
+  expires_at: string | null
+  first_access_at: string | null
+  is_active: boolean
+  is_expired?: boolean
+  days_remaining?: number
+}
+
 interface AuthGateProps {
   children: React.ReactNode
   onUserChange?: (user: User | null) => void
+  onSubscriptionChange?: (subscription: Subscription | null) => void
 }
 
-export function AuthGate({ children, onUserChange }: AuthGateProps) {
+export function AuthGate({ children, onUserChange, onSubscriptionChange }: AuthGateProps) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [user, setUser] = useState<User | null>(null)
+  const [subscription, setSubscription] = useState<Subscription | null>(null)
   const [loading, setLoading] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const [checkingSubscription, setCheckingSubscription] = useState(false)
   const [error, setError] = useState('')
   const supabase = createClient()
+
+  // Função para verificar subscription
+  const checkSubscription = async () => {
+    setCheckingSubscription(true)
+    try {
+      const res = await fetch('/api/subscription')
+      if (res.ok) {
+        const data = await res.json()
+        setSubscription(data.subscription)
+        onSubscriptionChange?.(data.subscription)
+      }
+    } catch (err) {
+      console.error('Erro ao verificar subscription:', err)
+    } finally {
+      setCheckingSubscription(false)
+    }
+  }
 
   // On mount: check existing session
   useEffect(() => {
@@ -39,6 +71,7 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
         if (!cancelled && result) {
           setUser(result)
           onUserChange?.(result)
+          checkSubscription()
         }
       } catch {
         // silencia erros de rede — a sessão simplesmente não existe
@@ -55,9 +88,12 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
           setUser(session.user)
           onUserChange?.(session.user)
           setMounted(true)
+          checkSubscription()
         } else if (event === 'SIGNED_OUT') {
           setUser(null)
+          setSubscription(null)
           onUserChange?.(null)
+          onSubscriptionChange?.(null)
         }
       }
     )
@@ -106,6 +142,7 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
       if (data.user) {
         setUser(data.user)
         onUserChange?.(data.user)
+        await checkSubscription()
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message.toLowerCase() : ''
@@ -135,6 +172,45 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
           <Wallet className="h-5 w-5 animate-pulse" />
           <span>Carregando...</span>
         </div>
+      </div>
+    )
+  }
+
+  // Loading subscription
+  if (user && checkingSubscription) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Wallet className="h-5 w-5 animate-pulse" />
+          <span>Verificando assinatura...</span>
+        </div>
+      </div>
+    )
+  }
+
+  // Subscription expired
+  if (user && subscription?.is_expired) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-destructive">
+              <AlertTriangle className="h-8 w-8 text-destructive-foreground" />
+            </div>
+            <CardTitle className="text-2xl">Assinatura Expirada</CardTitle>
+            <CardDescription>
+              Sua assinatura expirou em {subscription.expires_at ? new Date(subscription.expires_at).toLocaleDateString('pt-BR') : 'data desconhecida'}.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-center text-muted-foreground text-sm">
+              Entre em contato com o administrador para renovar seu acesso ao sistema.
+            </p>
+            <Button variant="outline" className="w-full" onClick={handleLogout}>
+              Sair da conta
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     )
   }

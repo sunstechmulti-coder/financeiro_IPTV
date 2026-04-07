@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useEffect } from 'react'
-import { Plus, Wallet, LayoutDashboard, List, Settings, Loader2, BarChart2, Mail, LogOut } from 'lucide-react'
+import { Plus, Wallet, LayoutDashboard, List, Settings, Loader2, BarChart2, Mail, LogOut, Clock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SummaryCards } from '@/components/summary-cards'
 import { TransactionsTable } from '@/components/transactions-table'
@@ -18,6 +18,22 @@ import { createClient } from '@/lib/supabase/client'
 
 const ADMIN_EMAIL = 'admin1@sunstech.com'
 
+interface Subscription {
+  id: string
+  user_id: string
+  plan_type: string
+  started_at: string
+  expires_at: string | null
+  first_access_at: string | null
+  is_active: boolean
+  is_expired?: boolean
+  days_remaining?: number
+}
+
+interface CashFlowDashboardProps {
+  subscription?: Subscription | null
+}
+
 type Tab = 'dashboard' | 'transacoes' | 'analytics' | 'configuracoes'
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
@@ -27,10 +43,78 @@ const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: 'configuracoes', label: 'Configurações',  icon: Settings },
 ]
 
-export function CashFlowDashboard() {
+export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
   const [isAdmin, setIsAdmin] = useState(false)
   const [userEmail, setUserEmail] = useState<string | null>(null)
   const supabase = createClient()
+
+  // Função para obter badge de subscription
+  const getSubscriptionBadge = () => {
+    if (!subscription) return null
+
+    // Admin não mostra badge
+    if (userEmail === ADMIN_EMAIL) return null
+
+    // Ainda não fez primeiro acesso
+    if (!subscription.first_access_at) {
+      return (
+        <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 text-xs">
+          <Clock className="h-3 w-3" />
+          <span className="hidden sm:inline">Aguardando ativação</span>
+        </div>
+      )
+    }
+
+    const daysRemaining = subscription.days_remaining ?? 0
+
+    // Expirado
+    if (subscription.is_expired || daysRemaining <= 0) {
+      return (
+        <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-destructive/20 text-destructive text-xs">
+          <Clock className="h-3 w-3" />
+          <span>Expirado</span>
+        </div>
+      )
+    }
+
+    // Menos de 7 dias - laranja
+    if (daysRemaining <= 7) {
+      return (
+        <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 text-xs">
+          <Clock className="h-3 w-3" />
+          <span>{daysRemaining}d</span>
+        </div>
+      )
+    }
+
+    // Menos de 15 dias - amarelo
+    if (daysRemaining <= 15) {
+      return (
+        <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 text-xs">
+          <Clock className="h-3 w-3" />
+          <span>{daysRemaining}d</span>
+        </div>
+      )
+    }
+
+    // Trial
+    if (subscription.plan_type === 'trial') {
+      return (
+        <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 text-xs">
+          <Clock className="h-3 w-3" />
+          <span className="hidden sm:inline">Teste</span> {daysRemaining}d
+        </div>
+      )
+    }
+
+    // Ativo normal - verde
+    return (
+      <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-xs">
+        <Clock className="h-3 w-3" />
+        <span>{daysRemaining}d</span>
+      </div>
+    )
+  }
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -145,11 +229,12 @@ export function CashFlowDashboard() {
             <Wallet className="h-5 w-5 text-primary" />
             <span>Cash Flow</span>
             {userEmail && (
-              <div className="flex items-center gap-1 ml-2 pl-2 border-l border-border">
+              <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-border">
                 <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                 <span className="text-xs text-muted-foreground font-normal truncate max-w-[140px] hidden sm:inline">
                   {userEmail}
                 </span>
+                {getSubscriptionBadge()}
                 <Button
                   variant="ghost"
                   size="sm"

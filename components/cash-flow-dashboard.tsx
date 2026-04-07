@@ -37,10 +37,10 @@ interface CashFlowDashboardProps {
 type Tab = 'dashboard' | 'transacoes' | 'analytics' | 'configuracoes'
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
-  { id: 'dashboard',     label: 'Dashboard',     icon: LayoutDashboard },
-  { id: 'transacoes',    label: 'Transações',     icon: List },
-  { id: 'analytics',     label: 'Analytics',      icon: BarChart2 },
-  { id: 'configuracoes', label: 'Configurações',  icon: Settings },
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'transacoes', label: 'Transações', icon: List },
+  { id: 'analytics', label: 'Analytics', icon: BarChart2 },
+  { id: 'configuracoes', label: 'Configurações', icon: Settings },
 ]
 
 export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
@@ -226,7 +226,7 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
       <header className="sticky top-0 z-40 border-b bg-card/80 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
           <div className="flex items-center gap-2 font-semibold">
-            <Wallet className="h-5 w-5 text-primary" />
+            <img src="/logo-icon.png" alt="Cash Flow" className="h-9 w-9 object-contain" />
             <span>Cash Flow</span>
             {userEmail && (
               <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-border">
@@ -303,7 +303,7 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
         </div>
 
         {/* Mobile floating new transaction button */}
-        <div className="sm:hidden fixed bottom-4 right-4 z-30">
+        <div className="sm:hidden fixed bottom-10 right-4 z-30">
           <Button
             size="sm"
             onClick={() => {

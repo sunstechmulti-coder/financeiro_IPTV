@@ -176,21 +176,9 @@ export function AuthGate({ children, onUserChange, onSubscriptionChange }: AuthG
     )
   }
 
-  // Loading subscription
-  if (user && checkingSubscription) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <Wallet className="h-5 w-5 animate-pulse" />
-          <span>Verificando assinatura...</span>
-        </div>
-      </div>
-    )
-  }
-
-  // Subscription expired (admin nunca expira)
+  // Subscription expired (admin nunca expira) - só bloqueia se subscription carregou e está expirada
   const isAdmin = user?.email === 'admin1@sunstech.com'
-  if (user && subscription?.is_expired && !isAdmin) {
+  if (user && !checkingSubscription && subscription?.is_expired && !isAdmin) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-4">
         <Card className="w-full max-w-md">

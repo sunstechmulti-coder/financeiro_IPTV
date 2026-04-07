@@ -224,8 +224,13 @@ export function AdminUsersPanel() {
     })
   }
 
-  const getSubscriptionBadge = (user: AdminUser) => {
-    const sub = user.subscription
+  const getSubscriptionBadge = (u: AdminUser) => {
+    // Admin não mostra badge de subscription
+    if (u.email === 'admin1@sunstech.com') {
+      return null
+    }
+
+    const sub = u.subscription
     
     if (!sub) {
       return <Badge variant="outline" className="text-xs">Sem plano</Badge>
@@ -460,7 +465,7 @@ export function AdminUsersPanel() {
                     </div>
                     <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
                       <span>Criado em {formatDate(u.created_at)}</span>
-                      {u.subscription?.expires_at && (
+                      {u.email !== 'admin1@sunstech.com' && u.subscription?.expires_at && (
                         <span className="flex items-center gap-1">
                           <Calendar className="h-3 w-3" />
                           Expira: {new Date(u.subscription.expires_at).toLocaleDateString('pt-BR')}

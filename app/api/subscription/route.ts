@@ -25,11 +25,30 @@ async function getSessionUser() {
   return user
 }
 
+const ADMIN_EMAIL = 'admin1@sunstech.com'
+
 // GET /api/subscription — retorna a subscription do usuário logado
 export async function GET() {
   const user = await getSessionUser()
   if (!user) {
     return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
+  }
+
+  // Admin nunca expira - retornar subscription especial
+  if (user.email === ADMIN_EMAIL) {
+    return NextResponse.json({
+      subscription: {
+        id: 'admin',
+        user_id: user.id,
+        plan_type: 'admin',
+        started_at: user.created_at,
+        expires_at: null,
+        first_access_at: user.created_at,
+        is_active: true,
+        is_expired: false,
+        days_remaining: 999999,
+      },
+    })
   }
 
   const admin = createAdminClient()

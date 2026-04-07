@@ -188,8 +188,9 @@ export function AuthGate({ children, onUserChange, onSubscriptionChange }: AuthG
     )
   }
 
-  // Subscription expired
-  if (user && subscription?.is_expired) {
+  // Subscription expired (admin nunca expira)
+  const isAdmin = user?.email === 'admin1@sunstech.com'
+  if (user && subscription?.is_expired && !isAdmin) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-4">
         <Card className="w-full max-w-md">

@@ -223,10 +223,10 @@ export function AuthGate({ children, onUserChange, onSubscriptionChange }: AuthG
   // Login card
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
+      <Card className="w-full max-w-lg">
         <CardHeader className="text-center">
           <div className="mx-auto mb-3 flex items-center justify-center overflow-hidden">
-            <img src="/logo-login.png" alt="Cash Flow" className="h-100 w-100 object-contain mx-auto" />
+            <img src="/logo-login.png" alt="Cash Flow" className="h-56 w-56 object-contain mx-auto" />
           </div>
           <CardTitle className="text-2xl">Cash Flow</CardTitle>
           <CardDescription>

@@ -9,8 +9,8 @@ export const metadata: Metadata = {
   title: 'Cash Flow',
   description: 'Sistema de controle financeiro para revenda IPTV',
   icons: {
-    icon: '/favicon.png',
-    apple: '/favicon.png',
+    icon: '/logo-icon.png',
+    apple: '/logo-icon.png',
   },
 }
 

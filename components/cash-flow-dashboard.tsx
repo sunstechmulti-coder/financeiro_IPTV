@@ -226,7 +226,7 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
       <header className="sticky top-0 z-40 border-b bg-card/80 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
           <div className="flex items-center gap-2 font-semibold">
-            <img src="/logo.png" alt="Cash Flow" className="h-10 w-10 object-contain" />
+            <img src="/logo-icon.png" alt="Cash Flow" className="h-9 w-9 object-contain" />
             <span>Cash Flow</span>
             {userEmail && (
               <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-border">

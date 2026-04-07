@@ -37,10 +37,10 @@ interface CashFlowDashboardProps {
 type Tab = 'dashboard' | 'transacoes' | 'analytics' | 'configuracoes'
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
-  { id: 'dashboard',     label: 'Dashboard',     icon: LayoutDashboard },
-  { id: 'transacoes',    label: 'Transações',     icon: List },
-  { id: 'analytics',     label: 'Analytics',      icon: BarChart2 },
-  { id: 'configuracoes', label: 'Configurações',  icon: Settings },
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'transacoes', label: 'Transações', icon: List },
+  { id: 'analytics', label: 'Analytics', icon: BarChart2 },
+  { id: 'configuracoes', label: 'Configurações', icon: Settings },
 ]
 
 export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
@@ -303,7 +303,7 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
         </div>
 
         {/* Mobile floating new transaction button */}
-        <div className="sm:hidden fixed bottom-4 right-4 z-30">
+        <div className="sm:hidden fixed bottom-20 right-4 z-30">
           <Button
             size="sm"
             onClick={() => {

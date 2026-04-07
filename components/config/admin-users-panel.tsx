@@ -13,6 +13,8 @@ import {
   Check,
   Loader2,
   RefreshCw,
+  Calendar,
+  Clock,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -39,12 +41,40 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+
+interface Subscription {
+  id: string
+  user_id: string
+  plan_type: string
+  started_at: string
+  expires_at: string | null
+  first_access_at: string | null
+  is_active: boolean
+}
 
 interface AdminUser {
   id: string
   email: string | undefined
   created_at: string
   last_sign_in_at: string | undefined
+  subscription: Subscription | null
+}
+
+const PLAN_LABELS: Record<string, string> = {
+  trial: 'Teste Grátis',
+  '1_month': '1 Mês',
+  '2_months': '2 Meses',
+  '3_months': '3 Meses',
+  '6_months': '6 Meses',
+  '12_months': '12 Meses',
+  custom: 'Personalizado',
 }
 
 export function AdminUsersPanel() {
@@ -63,6 +93,14 @@ export function AdminUsersPanel() {
 
   // Deletar
   const [deletingId, setDeletingId] = useState<string | null>(null)
+
+  // Editar plano
+  const [editPlanDialogOpen, setEditPlanDialogOpen] = useState(false)
+  const [editingUser, setEditingUser] = useState<AdminUser | null>(null)
+  const [selectedPlan, setSelectedPlan] = useState('')
+  const [customExpirationDate, setCustomExpirationDate] = useState('')
+  const [updatingPlan, setUpdatingPlan] = useState(false)
+  const [planUpdateSuccess, setPlanUpdateSuccess] = useState('')
 
   const fetchUsers = useCallback(async () => {
     setLoadingUsers(true)
@@ -139,6 +177,58 @@ export function AdminUsersPanel() {
     }
   }
 
+  const handleUpdatePlan = async () => {
+    if (!editingUser) return
+    // Precisa ter ou um plano selecionado ou uma data customizada
+    if (!selectedPlan && !customExpirationDate) return
+    setUpdatingPlan(true)
+    setPlanUpdateSuccess('')
+
+    try {
+      const body: Record<string, string> = { userId: editingUser.id }
+      if (selectedPlan) body.planType = selectedPlan
+      if (customExpirationDate) body.customExpiresAt = customExpirationDate
+
+      const res = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        setError(json.error || 'Erro ao atualizar plano.')
+        return
+      }
+      setPlanUpdateSuccess('Plano atualizado com sucesso!')
+      await fetchUsers()
+      setTimeout(() => {
+        setEditPlanDialogOpen(false)
+        setEditingUser(null)
+        setSelectedPlan('')
+        setCustomExpirationDate('')
+        setPlanUpdateSuccess('')
+      }, 1500)
+    } catch {
+      setError('Erro ao atualizar plano.')
+    } finally {
+      setUpdatingPlan(false)
+    }
+  }
+
+  const openEditPlanDialog = (user: AdminUser) => {
+    setEditingUser(user)
+    setSelectedPlan('')
+    // Formatar data atual de expiração para o input date (YYYY-MM-DD)
+    if (user.subscription?.expires_at) {
+      const date = new Date(user.subscription.expires_at)
+      setCustomExpirationDate(date.toISOString().split('T')[0])
+    } else {
+      setCustomExpirationDate('')
+    }
+    setEditPlanDialogOpen(true)
+    setPlanUpdateSuccess('')
+  }
+
   const formatDate = (dateStr: string | undefined) => {
     if (!dateStr) return '—'
     return new Date(dateStr).toLocaleDateString('pt-BR', {
@@ -148,6 +238,78 @@ export function AdminUsersPanel() {
       hour: '2-digit',
       minute: '2-digit',
     })
+  }
+
+  const getSubscriptionBadge = (u: AdminUser) => {
+    // Admin não mostra badge de subscription
+    if (u.email === 'admin1@sunstech.com') {
+      return null
+    }
+
+    const sub = u.subscription
+    
+    if (!sub) {
+      return <Badge variant="outline" className="text-xs">Sem plano</Badge>
+    }
+
+    // Se ainda não fez primeiro acesso
+    if (!sub.first_access_at) {
+      return (
+        <Badge className="text-xs bg-blue-500/20 text-blue-400 border-blue-500/30">
+          Aguardando ativação
+        </Badge>
+      )
+    }
+
+    // Calcular dias restantes
+    const now = new Date()
+    const expiresAt = sub.expires_at ? new Date(sub.expires_at) : null
+    const daysRemaining = expiresAt 
+      ? Math.ceil((expiresAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000))
+      : 0
+
+    // Expirado
+    if (daysRemaining <= 0) {
+      return (
+        <Badge variant="destructive" className="text-xs">
+          Expirado
+        </Badge>
+      )
+    }
+
+    // Menos de 7 dias - vermelho/laranja
+    if (daysRemaining <= 7) {
+      return (
+        <Badge className="text-xs bg-orange-500/20 text-orange-400 border-orange-500/30">
+          {daysRemaining}d restantes
+        </Badge>
+      )
+    }
+
+    // Menos de 15 dias - amarelo
+    if (daysRemaining <= 15) {
+      return (
+        <Badge className="text-xs bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
+          {daysRemaining}d restantes
+        </Badge>
+      )
+    }
+
+    // Trial
+    if (sub.plan_type === 'trial') {
+      return (
+        <Badge className="text-xs bg-blue-500/20 text-blue-400 border-blue-500/30">
+          Teste - {daysRemaining}d
+        </Badge>
+      )
+    }
+
+    // Ativo normal - verde
+    return (
+      <Badge className="text-xs bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
+        {PLAN_LABELS[sub.plan_type] || sub.plan_type} - {daysRemaining}d
+      </Badge>
+    )
   }
 
   return (
@@ -307,17 +469,24 @@ export function AdminUsersPanel() {
                   key={u.id}
                   className="flex items-center justify-between px-6 py-4 hover:bg-muted/30 transition-colors"
                 >
-                  <div className="flex flex-col gap-0.5 min-w-0">
-                    <div className="flex items-center gap-2">
+                  <div className="flex flex-col gap-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-medium truncate">{u.email}</span>
                       {u.email === 'admin1@sunstech.com' && (
                         <Badge variant="secondary" className="text-xs shrink-0">
                           Admin
                         </Badge>
                       )}
+                      {getSubscriptionBadge(u)}
                     </div>
-                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
                       <span>Criado em {formatDate(u.created_at)}</span>
+                      {u.email !== 'admin1@sunstech.com' && u.subscription?.expires_at && (
+                        <span className="flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          Expira: {new Date(u.subscription.expires_at).toLocaleDateString('pt-BR')}
+                        </span>
+                      )}
                       {u.last_sign_in_at && (
                         <span className="hidden sm:inline">
                           Último acesso: {formatDate(u.last_sign_in_at)}
@@ -326,48 +495,161 @@ export function AdminUsersPanel() {
                     </div>
                   </div>
 
-                  {u.email !== 'admin1@sunstech.com' && (
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
+                  <div className="flex items-center gap-2 shrink-0 ml-4">
+                    {u.email !== 'admin1@sunstech.com' && (
+                      <>
                         <Button
-                          variant="ghost"
+                          variant="outline"
                           size="sm"
-                          className="text-muted-foreground hover:text-destructive shrink-0 ml-4"
-                          disabled={deletingId === u.id}
+                          onClick={() => openEditPlanDialog(u)}
+                          className="h-8"
                         >
-                          {deletingId === u.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-4 w-4" />
-                          )}
-                          <span className="sr-only">Remover usuário</span>
+                          <Clock className="h-3.5 w-3.5 mr-1.5" />
+                          <span className="hidden sm:inline">Plano</span>
                         </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Remover usuário</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Tem certeza que deseja remover o usuário <strong>{u.email}</strong>? Esta ação não pode ser desfeita.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                          <AlertDialogAction
-                            onClick={() => handleDeleteUser(u.id)}
-                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                          >
-                            Remover
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  )}
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-muted-foreground hover:text-destructive h-8 w-8 p-0"
+                              disabled={deletingId === u.id}
+                            >
+                              {deletingId === u.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-4 w-4" />
+                              )}
+                              <span className="sr-only">Remover usuário</span>
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Remover usuário</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Tem certeza que deseja remover o usuário <strong>{u.email}</strong>? Esta ação não pode ser desfeita.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => handleDeleteUser(u.id)}
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                              >
+                                Remover
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
           )}
         </CardContent>
       </Card>
+
+      {/* Dialog de edição de plano */}
+      <Dialog
+        open={editPlanDialogOpen}
+        onOpenChange={(open) => {
+          setEditPlanDialogOpen(open)
+          if (!open) {
+            setEditingUser(null)
+            setSelectedPlan('')
+            setPlanUpdateSuccess('')
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar Plano</DialogTitle>
+            <DialogDescription>
+              Alterar o plano de assinatura de <strong>{editingUser?.email}</strong>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {/* Campo de data manual */}
+            <div className="space-y-2">
+              <Label htmlFor="expiration-date">Data de Vencimento</Label>
+              <Input
+                id="expiration-date"
+                type="date"
+                value={customExpirationDate}
+                onChange={(e) => setCustomExpirationDate(e.target.value)}
+                className="w-full"
+              />
+              <p className="text-xs text-muted-foreground">
+                Edite a data diretamente para corrigir ou ajustar o vencimento.
+              </p>
+            </div>
+
+            {/* Adicionar tempo */}
+            <div className="space-y-2">
+              <Label htmlFor="plan-select">Adicionar Tempo (opcional)</Label>
+              <Select value={selectedPlan} onValueChange={setSelectedPlan}>
+                <SelectTrigger id="plan-select">
+                  <SelectValue placeholder="Selecione para adicionar dias" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1_month">+ 1 Mês (30 dias)</SelectItem>
+                  <SelectItem value="2_months">+ 2 Meses (60 dias)</SelectItem>
+                  <SelectItem value="3_months">+ 3 Meses (90 dias)</SelectItem>
+                  <SelectItem value="6_months">+ 6 Meses (180 dias)</SelectItem>
+                  <SelectItem value="12_months">+ 12 Meses (365 dias)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Os dias serão <strong>somados</strong> à data de vencimento acima.
+              </p>
+            </div>
+
+            {editingUser?.subscription && (
+              <div className="rounded-md bg-muted/50 p-3 text-sm space-y-1">
+                <p className="text-muted-foreground">
+                  <strong>Plano atual:</strong> {PLAN_LABELS[editingUser.subscription.plan_type] || editingUser.subscription.plan_type}
+                </p>
+                {editingUser.subscription.expires_at && (
+                  <p className="text-muted-foreground">
+                    <strong>Expira em:</strong> {new Date(editingUser.subscription.expires_at).toLocaleDateString('pt-BR')}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {planUpdateSuccess && (
+              <div className="flex items-center gap-2 text-sm text-emerald-600">
+                <Check className="h-4 w-4 shrink-0" />
+                {planUpdateSuccess}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setEditPlanDialogOpen(false)}
+              disabled={updatingPlan}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleUpdatePlan}
+              disabled={updatingPlan || (!selectedPlan && !customExpirationDate)}
+            >
+              {updatingPlan ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Salvando...
+                </>
+              ) : (
+                'Salvar Alterações'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

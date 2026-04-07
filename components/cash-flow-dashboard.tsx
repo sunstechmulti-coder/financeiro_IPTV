@@ -303,7 +303,7 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
         </div>
 
         {/* Mobile floating new transaction button */}
-        <div className="sm:hidden fixed bottom-20 right-4 z-30">
+        <div className="sm:hidden fixed bottom-15 right-4 z-30">
           <Button
             size="sm"
             onClick={() => {

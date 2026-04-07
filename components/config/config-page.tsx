@@ -73,38 +73,40 @@ export function ConfigPage({
       </div>
 
       <Tabs defaultValue="servidores">
-        <TabsList className={`grid w-full max-w-3xl ${isAdmin ? 'grid-cols-7' : 'grid-cols-6'}`}>
-          <TabsTrigger value="servidores" className="gap-1.5">
-            <Server className="h-4 w-4" />
-            Servidores
-          </TabsTrigger>
-          <TabsTrigger value="planos" className="gap-1.5">
-            <LayoutList className="h-4 w-4" />
-            Planos
-          </TabsTrigger>
-          <TabsTrigger value="saidas" className="gap-1.5">
-            <ArrowDownCircle className="h-4 w-4" />
-            Saídas
-          </TabsTrigger>
-          <TabsTrigger value="ativacoes" className="gap-1.5">
-            <Zap className="h-4 w-4" />
-            Ativações
-          </TabsTrigger>
-          <TabsTrigger value="revenda" className="gap-1.5">
-            <DollarSign className="h-4 w-4" />
-            Revenda
-          </TabsTrigger>
-          <TabsTrigger value="conta" className="gap-1.5">
-            <UserCog className="h-4 w-4" />
-            Conta
-          </TabsTrigger>
-          {isAdmin && (
-            <TabsTrigger value="usuarios" className="gap-1.5">
-              <Users className="h-4 w-4" />
-              Usuários
+        <div className="w-full overflow-x-auto pb-1">
+          <TabsList className={`inline-flex w-max md:grid md:w-full md:max-w-3xl ${isAdmin ? 'md:grid-cols-7' : 'md:grid-cols-6'}`}>
+            <TabsTrigger value="servidores" className="gap-1.5 whitespace-nowrap">
+              <Server className="h-4 w-4 shrink-0" />
+              <span>Servidores</span>
             </TabsTrigger>
-          )}
-        </TabsList>
+            <TabsTrigger value="planos" className="gap-1.5 whitespace-nowrap">
+              <LayoutList className="h-4 w-4 shrink-0" />
+              <span>Planos</span>
+            </TabsTrigger>
+            <TabsTrigger value="saidas" className="gap-1.5 whitespace-nowrap">
+              <ArrowDownCircle className="h-4 w-4 shrink-0" />
+              <span>Saídas</span>
+            </TabsTrigger>
+            <TabsTrigger value="ativacoes" className="gap-1.5 whitespace-nowrap">
+              <Zap className="h-4 w-4 shrink-0" />
+              <span>Ativações</span>
+            </TabsTrigger>
+            <TabsTrigger value="revenda" className="gap-1.5 whitespace-nowrap">
+              <DollarSign className="h-4 w-4 shrink-0" />
+              <span>Revenda</span>
+            </TabsTrigger>
+            <TabsTrigger value="conta" className="gap-1.5 whitespace-nowrap">
+              <UserCog className="h-4 w-4 shrink-0" />
+              <span>Conta</span>
+            </TabsTrigger>
+            {isAdmin && (
+              <TabsTrigger value="usuarios" className="gap-1.5 whitespace-nowrap">
+                <Users className="h-4 w-4 shrink-0" />
+                <span>Usuários</span>
+              </TabsTrigger>
+            )}
+          </TabsList>
+        </div>
 
         <TabsContent value="servidores" className="mt-6">
           <ServidoresList 

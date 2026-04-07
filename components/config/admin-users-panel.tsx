@@ -571,17 +571,22 @@ export function AdminUsersPanel() {
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                O plano será ativado imediatamente a partir de hoje.
+                Os dias serão <strong>somados</strong> ao vencimento atual (se ainda ativo) ou a partir de hoje (se expirado).
               </p>
             </div>
 
             {editingUser?.subscription?.expires_at && (
-              <div className="rounded-md bg-muted/50 p-3 text-sm">
+              <div className="rounded-md bg-muted/50 p-3 text-sm space-y-1">
                 <p className="text-muted-foreground">
                   <strong>Plano atual:</strong> {PLAN_LABELS[editingUser.subscription.plan_type] || editingUser.subscription.plan_type}
                 </p>
                 <p className="text-muted-foreground">
                   <strong>Expira em:</strong> {new Date(editingUser.subscription.expires_at).toLocaleDateString('pt-BR')}
+                </p>
+                <p className="text-xs text-blue-400">
+                  {new Date(editingUser.subscription.expires_at) > new Date() 
+                    ? 'Os dias serão adicionados ao vencimento atual.'
+                    : 'Assinatura expirada. Contagem começa a partir de hoje.'}
                 </p>
               </div>
             )}
@@ -611,7 +616,7 @@ export function AdminUsersPanel() {
                   Salvando...
                 </>
               ) : (
-                'Salvar Plano'
+                'Renovar Plano'
               )}
             </Button>
           </DialogFooter>

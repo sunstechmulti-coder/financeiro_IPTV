@@ -131,41 +131,47 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Tipo de plano inválido.' }, { status: 400 })
   }
 
-  // Calcular data de expiração baseada no tipo de plano
-  const now = new Date()
-  let expiresAt: Date
-
-  switch (planType) {
-    case 'trial':
-      expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000) // 30 dias
-      break
-    case '1_month':
-      expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
-      break
-    case '2_months':
-      expiresAt = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000)
-      break
-    case '3_months':
-      expiresAt = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000)
-      break
-    case '6_months':
-      expiresAt = new Date(now.getTime() + 180 * 24 * 60 * 60 * 1000)
-      break
-    case '12_months':
-      expiresAt = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000)
-      break
-    default:
-      expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+  // Dias por tipo de plano
+  const planDays: Record<string, number> = {
+    trial: 30,
+    '1_month': 30,
+    '2_months': 60,
+    '3_months': 90,
+    '6_months': 180,
+    '12_months': 365,
   }
+
+  const daysToAdd = planDays[planType] || 30
+  const now = new Date()
 
   const admin = createAdminClient()
 
   // Verificar se já existe subscription para o usuário
   const { data: existingSub } = await admin
     .from('user_subscriptions')
-    .select('id')
+    .select('*')
     .eq('user_id', userId)
     .single()
+
+  let expiresAt: Date
+  let baseDate: Date
+
+  if (existingSub && existingSub.expires_at) {
+    const currentExpiration = new Date(existingSub.expires_at)
+    
+    // Se ainda não expirou, soma os dias ao vencimento atual
+    // Se já expirou, começa a partir de hoje
+    if (currentExpiration > now) {
+      baseDate = currentExpiration
+    } else {
+      baseDate = now
+    }
+  } else {
+    // Sem subscription ou sem data de expiração, começa de hoje
+    baseDate = now
+  }
+
+  expiresAt = new Date(baseDate.getTime() + daysToAdd * 24 * 60 * 60 * 1000)
 
   if (existingSub) {
     // Atualizar subscription existente
@@ -173,9 +179,8 @@ export async function PATCH(req: NextRequest) {
       .from('user_subscriptions')
       .update({
         plan_type: planType,
-        started_at: now.toISOString(),
         expires_at: expiresAt.toISOString(),
-        first_access_at: now.toISOString(), // Marcar como ativado
+        first_access_at: existingSub.first_access_at || now.toISOString(),
         is_active: true,
         updated_at: now.toISOString(),
       })
@@ -200,7 +205,12 @@ export async function PATCH(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ success: true, expiresAt: expiresAt.toISOString() })
+  return NextResponse.json({ 
+    success: true, 
+    expiresAt: expiresAt.toISOString(),
+    daysAdded: daysToAdd,
+    baseDate: baseDate.toISOString(),
+  })
 }
 
 // DELETE /api/admin/users — remove um usuário pelo ID

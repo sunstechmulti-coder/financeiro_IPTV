@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Wallet, Mail, ArrowRight, Lock, Eye, EyeOff, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -38,13 +38,15 @@ export function AuthGate({ children, onUserChange, onSubscriptionChange }: AuthG
   const [checkingSubscription, setCheckingSubscription] = useState(false)
   const [error, setError] = useState('')
   const supabase = createClient()
+  const mountedRef = useRef(false)
 
-  // Função para verificar subscription
+  // Função para verificar subscription (só atualiza estado se componente ainda montado)
   const checkSubscription = async () => {
+    if (!mountedRef.current) return
     setCheckingSubscription(true)
     try {
       const res = await fetch('/api/subscription')
-      if (res.ok) {
+      if (res.ok && mountedRef.current) {
         const data = await res.json()
         setSubscription(data.subscription)
         onSubscriptionChange?.(data.subscription)
@@ -52,12 +54,15 @@ export function AuthGate({ children, onUserChange, onSubscriptionChange }: AuthG
     } catch (err) {
       console.error('Erro ao verificar subscription:', err)
     } finally {
-      setCheckingSubscription(false)
+      if (mountedRef.current) {
+        setCheckingSubscription(false)
+      }
     }
   }
 
   // On mount: check existing session
   useEffect(() => {
+    mountedRef.current = true
     let cancelled = false
 
     const checkUser = async () => {
@@ -71,6 +76,7 @@ export function AuthGate({ children, onUserChange, onSubscriptionChange }: AuthG
         if (!cancelled && result) {
           setUser(result)
           onUserChange?.(result)
+          setMounted(true)
           checkSubscription()
         }
       } catch {
@@ -100,6 +106,7 @@ export function AuthGate({ children, onUserChange, onSubscriptionChange }: AuthG
 
     return () => {
       cancelled = true
+      mountedRef.current = false
       subscription.unsubscribe()
     }
   }, [])

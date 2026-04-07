@@ -74,6 +74,7 @@ const PLAN_LABELS: Record<string, string> = {
   '3_months': '3 Meses',
   '6_months': '6 Meses',
   '12_months': '12 Meses',
+  custom: 'Personalizado',
 }
 
 export function AdminUsersPanel() {
@@ -97,6 +98,7 @@ export function AdminUsersPanel() {
   const [editPlanDialogOpen, setEditPlanDialogOpen] = useState(false)
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null)
   const [selectedPlan, setSelectedPlan] = useState('')
+  const [customExpirationDate, setCustomExpirationDate] = useState('')
   const [updatingPlan, setUpdatingPlan] = useState(false)
   const [planUpdateSuccess, setPlanUpdateSuccess] = useState('')
 
@@ -176,15 +178,21 @@ export function AdminUsersPanel() {
   }
 
   const handleUpdatePlan = async () => {
-    if (!editingUser || !selectedPlan) return
+    if (!editingUser) return
+    // Precisa ter ou um plano selecionado ou uma data customizada
+    if (!selectedPlan && !customExpirationDate) return
     setUpdatingPlan(true)
     setPlanUpdateSuccess('')
 
     try {
+      const body: Record<string, string> = { userId: editingUser.id }
+      if (selectedPlan) body.planType = selectedPlan
+      if (customExpirationDate) body.customExpiresAt = customExpirationDate
+
       const res = await fetch('/api/admin/users', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: editingUser.id, planType: selectedPlan }),
+        body: JSON.stringify(body),
       })
       const json = await res.json()
       if (!res.ok) {
@@ -197,6 +205,7 @@ export function AdminUsersPanel() {
         setEditPlanDialogOpen(false)
         setEditingUser(null)
         setSelectedPlan('')
+        setCustomExpirationDate('')
         setPlanUpdateSuccess('')
       }, 1500)
     } catch {
@@ -208,7 +217,14 @@ export function AdminUsersPanel() {
 
   const openEditPlanDialog = (user: AdminUser) => {
     setEditingUser(user)
-    setSelectedPlan(user.subscription?.plan_type || 'trial')
+    setSelectedPlan('')
+    // Formatar data atual de expiração para o input date (YYYY-MM-DD)
+    if (user.subscription?.expires_at) {
+      const date = new Date(user.subscription.expires_at)
+      setCustomExpirationDate(date.toISOString().split('T')[0])
+    } else {
+      setCustomExpirationDate('')
+    }
     setEditPlanDialogOpen(true)
     setPlanUpdateSuccess('')
   }
@@ -555,39 +571,51 @@ export function AdminUsersPanel() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            {/* Campo de data manual */}
             <div className="space-y-2">
-              <Label htmlFor="plan-select">Tipo de Plano</Label>
-              <Select value={selectedPlan} onValueChange={setSelectedPlan}>
-                <SelectTrigger id="plan-select">
-                  <SelectValue placeholder="Selecione um plano" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="trial">Teste Grátis (30 dias)</SelectItem>
-                  <SelectItem value="1_month">1 Mês</SelectItem>
-                  <SelectItem value="2_months">2 Meses</SelectItem>
-                  <SelectItem value="3_months">3 Meses</SelectItem>
-                  <SelectItem value="6_months">6 Meses</SelectItem>
-                  <SelectItem value="12_months">12 Meses (1 Ano)</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label htmlFor="expiration-date">Data de Vencimento</Label>
+              <Input
+                id="expiration-date"
+                type="date"
+                value={customExpirationDate}
+                onChange={(e) => setCustomExpirationDate(e.target.value)}
+                className="w-full"
+              />
               <p className="text-xs text-muted-foreground">
-                Os dias serão <strong>somados</strong> ao vencimento atual (se ainda ativo) ou a partir de hoje (se expirado).
+                Edite a data diretamente para corrigir ou ajustar o vencimento.
               </p>
             </div>
 
-            {editingUser?.subscription?.expires_at && (
+            {/* Adicionar tempo */}
+            <div className="space-y-2">
+              <Label htmlFor="plan-select">Adicionar Tempo (opcional)</Label>
+              <Select value={selectedPlan} onValueChange={setSelectedPlan}>
+                <SelectTrigger id="plan-select">
+                  <SelectValue placeholder="Selecione para adicionar dias" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1_month">+ 1 Mês (30 dias)</SelectItem>
+                  <SelectItem value="2_months">+ 2 Meses (60 dias)</SelectItem>
+                  <SelectItem value="3_months">+ 3 Meses (90 dias)</SelectItem>
+                  <SelectItem value="6_months">+ 6 Meses (180 dias)</SelectItem>
+                  <SelectItem value="12_months">+ 12 Meses (365 dias)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Os dias serão <strong>somados</strong> à data de vencimento acima.
+              </p>
+            </div>
+
+            {editingUser?.subscription && (
               <div className="rounded-md bg-muted/50 p-3 text-sm space-y-1">
                 <p className="text-muted-foreground">
                   <strong>Plano atual:</strong> {PLAN_LABELS[editingUser.subscription.plan_type] || editingUser.subscription.plan_type}
                 </p>
-                <p className="text-muted-foreground">
-                  <strong>Expira em:</strong> {new Date(editingUser.subscription.expires_at).toLocaleDateString('pt-BR')}
-                </p>
-                <p className="text-xs text-blue-400">
-                  {new Date(editingUser.subscription.expires_at) > new Date() 
-                    ? 'Os dias serão adicionados ao vencimento atual.'
-                    : 'Assinatura expirada. Contagem começa a partir de hoje.'}
-                </p>
+                {editingUser.subscription.expires_at && (
+                  <p className="text-muted-foreground">
+                    <strong>Expira em:</strong> {new Date(editingUser.subscription.expires_at).toLocaleDateString('pt-BR')}
+                  </p>
+                )}
               </div>
             )}
 
@@ -608,7 +636,7 @@ export function AdminUsersPanel() {
             </Button>
             <Button
               onClick={handleUpdatePlan}
-              disabled={updatingPlan || !selectedPlan}
+              disabled={updatingPlan || (!selectedPlan && !customExpirationDate)}
             >
               {updatingPlan ? (
                 <>
@@ -616,7 +644,7 @@ export function AdminUsersPanel() {
                   Salvando...
                 </>
               ) : (
-                'Renovar Plano'
+                'Salvar Alterações'
               )}
             </Button>
           </DialogFooter>

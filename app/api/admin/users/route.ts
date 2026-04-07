@@ -120,14 +120,19 @@ export async function PATCH(req: NextRequest) {
   }
 
   const body = await req.json()
-  const { userId, planType } = body
+  const { userId, planType, customExpiresAt } = body
 
-  if (!userId || !planType) {
-    return NextResponse.json({ error: 'userId e planType são obrigatórios.' }, { status: 400 })
+  if (!userId) {
+    return NextResponse.json({ error: 'userId é obrigatório.' }, { status: 400 })
+  }
+
+  // Precisa ter ou planType ou customExpiresAt
+  if (!planType && !customExpiresAt) {
+    return NextResponse.json({ error: 'planType ou customExpiresAt são obrigatórios.' }, { status: 400 })
   }
 
   const validPlans = ['trial', '1_month', '2_months', '3_months', '6_months', '12_months']
-  if (!validPlans.includes(planType)) {
+  if (planType && !validPlans.includes(planType)) {
     return NextResponse.json({ error: 'Tipo de plano inválido.' }, { status: 400 })
   }
 
@@ -141,9 +146,7 @@ export async function PATCH(req: NextRequest) {
     '12_months': 365,
   }
 
-  const daysToAdd = planDays[planType] || 30
   const now = new Date()
-
   const admin = createAdminClient()
 
   // Verificar se já existe subscription para o usuário
@@ -154,31 +157,42 @@ export async function PATCH(req: NextRequest) {
     .single()
 
   let expiresAt: Date
-  let baseDate: Date
+  let daysAdded = 0
 
-  if (existingSub && existingSub.expires_at) {
-    const currentExpiration = new Date(existingSub.expires_at)
-    
-    // Se ainda não expirou, soma os dias ao vencimento atual
-    // Se já expirou, começa a partir de hoje
-    if (currentExpiration > now) {
-      baseDate = currentExpiration
+  // Se tem data customizada, usa ela como base
+  if (customExpiresAt) {
+    expiresAt = new Date(customExpiresAt)
+    // Se também tem planType, adiciona os dias à data customizada
+    if (planType) {
+      daysAdded = planDays[planType] || 0
+      expiresAt = new Date(expiresAt.getTime() + daysAdded * 24 * 60 * 60 * 1000)
+    }
+  } else if (planType) {
+    // Só planType: adiciona dias ao vencimento atual ou hoje
+    daysAdded = planDays[planType] || 30
+    let baseDate: Date
+
+    if (existingSub && existingSub.expires_at) {
+      const currentExpiration = new Date(existingSub.expires_at)
+      baseDate = currentExpiration > now ? currentExpiration : now
     } else {
       baseDate = now
     }
+
+    expiresAt = new Date(baseDate.getTime() + daysAdded * 24 * 60 * 60 * 1000)
   } else {
-    // Sem subscription ou sem data de expiração, começa de hoje
-    baseDate = now
+    return NextResponse.json({ error: 'Dados inválidos.' }, { status: 400 })
   }
 
-  expiresAt = new Date(baseDate.getTime() + daysToAdd * 24 * 60 * 60 * 1000)
+  // Determinar o plan_type a salvar
+  const newPlanType = planType || existingSub?.plan_type || 'custom'
 
   if (existingSub) {
     // Atualizar subscription existente
     const { error } = await admin
       .from('user_subscriptions')
       .update({
-        plan_type: planType,
+        plan_type: newPlanType,
         expires_at: expiresAt.toISOString(),
         first_access_at: existingSub.first_access_at || now.toISOString(),
         is_active: true,
@@ -193,7 +207,7 @@ export async function PATCH(req: NextRequest) {
     // Criar nova subscription
     const { error } = await admin.from('user_subscriptions').insert({
       user_id: userId,
-      plan_type: planType,
+      plan_type: newPlanType,
       started_at: now.toISOString(),
       expires_at: expiresAt.toISOString(),
       first_access_at: now.toISOString(),
@@ -208,8 +222,7 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json({ 
     success: true, 
     expiresAt: expiresAt.toISOString(),
-    daysAdded: daysToAdd,
-    baseDate: baseDate.toISOString(),
+    daysAdded,
   })
 }
 

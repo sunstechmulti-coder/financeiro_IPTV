@@ -2,11 +2,11 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import type { 
-  Transaction, 
-  Servidor, 
-  PlanoEntrada, 
-  SaidaRapida, 
+import type {
+  Transaction,
+  Servidor,
+  PlanoEntrada,
+  SaidaRapida,
   CreditMovement,
   ActivationProduct,
   ActivationTransaction,
@@ -27,7 +27,7 @@ export function useSupabaseData() {
   const [loading, setLoading] = useState(true)
   const [userId, setUserId] = useState<string | null>(null)
   const isMounted = useRef(false)
-  
+
   const supabase = useMemo(() => createClient(), [])
 
   // Fetch all data
@@ -44,7 +44,7 @@ export function useSupabaseData() {
       .from('servidores')
       .select('*')
       .order('nome')
-    
+
     if (servidoresData && isMounted.current) {
       setServidores(servidoresData.map(mapServidorFromDB))
     }
@@ -54,7 +54,7 @@ export function useSupabaseData() {
       .from('transactions')
       .select('*')
       .order('created_at', { ascending: false })
-    
+
     if (transactionsData && isMounted.current) {
       setTransactions(transactionsData.map(mapTransactionFromDB))
     }
@@ -64,7 +64,7 @@ export function useSupabaseData() {
       .from('planos')
       .select('*')
       .order('codigo')
-    
+
     if (planosData && isMounted.current) {
       setPlanos(planosData.map(mapPlanoFromDB))
     }
@@ -74,7 +74,7 @@ export function useSupabaseData() {
       .from('saidas_rapidas')
       .select('*')
       .order('nome')
-    
+
     if (saidasData && isMounted.current) {
       setSaidasRapidas(saidasData.map(mapSaidaRapidaFromDB))
     }
@@ -84,7 +84,7 @@ export function useSupabaseData() {
       .from('credit_movements')
       .select('*')
       .order('date', { ascending: false })
-    
+
     if (movementsData && isMounted.current) {
       setCreditMovements(movementsData.map(mapCreditMovementFromDB))
     }
@@ -94,7 +94,7 @@ export function useSupabaseData() {
       .from('activation_products')
       .select('*')
       .order('nome')
-    
+
     if (productsData && isMounted.current) {
       setActivationProducts(productsData.map(mapActivationProductFromDB))
     }
@@ -104,7 +104,7 @@ export function useSupabaseData() {
       .from('activation_transactions')
       .select('*')
       .order('created_at', { ascending: false })
-    
+
     if (actTxData && isMounted.current) {
       setActivationTransactions(actTxData.map(mapActivationTransactionFromDB))
     }
@@ -114,7 +114,7 @@ export function useSupabaseData() {
       .from('revenda_grupos')
       .select('*')
       .order('nome')
-    
+
     if (revendaData && isMounted.current) {
       setRevendaGrupos(revendaData.map((r: Record<string, unknown>) => ({
         id: r.id as string,
@@ -137,7 +137,7 @@ export function useSupabaseData() {
 
     const response = await fetch(`/api/migrate?userId=${userId}`)
     const result = await response.json()
-    
+
     if (result.seeded) {
       fetchAllData()
     }
@@ -146,7 +146,7 @@ export function useSupabaseData() {
   useEffect(() => {
     isMounted.current = true
     fetchAllData()
-    
+
     return () => {
       isMounted.current = false
     }
@@ -172,6 +172,9 @@ export function useSupabaseData() {
         amount: transaction.amount,
         server_id: transaction.serverId || null,
         credits_delta: transaction.creditsDelta || null,
+        unit_cost_snapshot: transaction.unitCostSnapshot ?? null,
+        cost_snapshot: transaction.costSnapshot ?? null,
+        profit_snapshot: transaction.profitSnapshot ?? null,
       })
       .select()
       .single()
@@ -195,6 +198,9 @@ export function useSupabaseData() {
         amount: transaction.amount,
         server_id: transaction.serverId || null,
         credits_delta: transaction.creditsDelta || null,
+        unit_cost_snapshot: transaction.unitCostSnapshot ?? null,
+        cost_snapshot: transaction.costSnapshot ?? null,
+        profit_snapshot: transaction.profitSnapshot ?? null,
       })
       .eq('id', transaction.id)
       .select()
@@ -285,7 +291,7 @@ export function useSupabaseData() {
     if (!servidor) return false
 
     const newBalance = Math.max(0, servidor.creditsBalance + delta)
-    
+
     const { error } = await supabase
       .from('servidores')
       .update({ credits_balance: newBalance })
@@ -293,7 +299,7 @@ export function useSupabaseData() {
 
     if (error) return false
 
-    setServidores(prev => prev.map(s => 
+    setServidores(prev => prev.map(s =>
       s.id === serverId ? { ...s, creditsBalance: newBalance } : s
     ))
     return true
@@ -528,7 +534,7 @@ export function useSupabaseData() {
     return true
   }
 
-  // ─── Activation Transaction operations ────────────────────────────────���────
+  // ─── Activation Transaction operations ─────────────────────────────────────
   const addActivationTransaction = async (
     atx: Omit<ActivationTransaction, 'id' | 'createdAt'>
   ): Promise<ActivationTransaction | null> => {
@@ -625,7 +631,6 @@ export function useSupabaseData() {
     return true
   }
 
-
   return {
     // Data
     transactions,
@@ -638,40 +643,40 @@ export function useSupabaseData() {
     revendaGrupos,
     loading,
     userId,
-    
+
     // Refresh
     refreshData: fetchAllData,
-    
+
     // Transaction operations
     addTransaction,
     updateTransaction,
     deleteTransaction,
-    
+
     // Servidor operations
     addServidor,
     updateServidor,
     deleteServidor,
     adjustCreditsBalance,
-    
+
     // Plano operations
     addPlano,
     updatePlano,
     deletePlano,
-    
+
     // Saida Rapida operations
     addSaidaRapida,
     updateSaidaRapida,
     deleteSaidaRapida,
-    
+
     // Credit Movement operations
     addCreditMovement,
     removeCreditMovementByTransaction,
-    
+
     // Activation Product operations
     addActivationProduct,
     updateActivationProduct,
     deleteActivationProduct,
-    
+
     // Activation Transaction operations
     addActivationTransaction,
     removeActivationTransactionByTransactionId,
@@ -697,6 +702,9 @@ function mapTransactionFromDB(data: any): Transaction {
     createdAt: data.created_at,
     serverId: data.server_id,
     creditsDelta: data.credits_delta,
+    unitCostSnapshot: data.unit_cost_snapshot,
+    costSnapshot: data.cost_snapshot,
+    profitSnapshot: data.profit_snapshot,
   }
 }
 

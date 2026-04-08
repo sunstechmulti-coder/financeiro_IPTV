@@ -343,10 +343,7 @@ export function TransactionDialog({
         serverId: selectedPlano.servidorId,
         creditsDelta: -totalCreditos,
 
-        // SNAPSHOT FINANCEIRO
-        unitCostSnapshot: custoUnitarioAtual,
-        costSnapshot: totalCusto,
-        profitSnapshot: totalLucro
+
       }
     }
 

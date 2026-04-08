@@ -72,7 +72,7 @@ export function SaidasRapidasList({ saidas, servidores, onAdd, onUpdate, onDelet
   const getServidorValorUnitario = (serverId?: string) => {
     if (!serverId) return 0
     const servidor = servidores.find(s => s.id === serverId)
-    return servidor?.valorUnitario ?? servidor?.unit_cost ?? 0
+    return servidor?.custoUnitario ?? 0
   }
 
   const handleOpen = (saida?: SaidaRapida) => {
@@ -141,7 +141,6 @@ export function SaidasRapidasList({ saidas, servidores, onAdd, onUpdate, onDelet
         </Button>
       </div>
 
-      {/* Filtro por categoria */}
       <div className="flex items-center gap-2">
         <Label className="text-sm">Filtrar por categoria:</Label>
         <Select value={filtroCategoria} onValueChange={setFiltroCategoria}>
@@ -218,7 +217,6 @@ export function SaidasRapidasList({ saidas, servidores, onAdd, onUpdate, onDelet
         </Table>
       </div>
 
-      {/* Dialog de edição/adição */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>

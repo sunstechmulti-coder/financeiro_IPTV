@@ -31,33 +31,25 @@ export function ServerProfit({ transactions, servidores, month, year }: ServerPr
     }
 
     const getTransactionCost = (t: Transaction, srv: Servidor) => {
-      const raw = t as unknown as Record<string, unknown>
-
-      const directCost =
-        raw.cost ??
-        raw.custo ??
-        raw.costSnapshot ??
-        raw.custoSnapshot
-
-      const numericDirectCost = Number(directCost)
-      if (Number.isFinite(numericDirectCost) && numericDirectCost > 0) {
-        return numericDirectCost
+      if (typeof t.costSnapshot === 'number' && Number.isFinite(t.costSnapshot)) {
+        return t.costSnapshot
       }
 
-      const unitSnapshot =
-        raw.unitCostSnapshot ??
-        raw.custoUnitarioSnapshot ??
-        raw.serverUnitCostSnapshot
-
-      const numericUnitSnapshot = Number(unitSnapshot)
-      const creditsConsumed = t.creditsDelta != null && t.creditsDelta < 0 ? Math.abs(t.creditsDelta) : 0
-
-      if (Number.isFinite(numericUnitSnapshot) && numericUnitSnapshot > 0 && creditsConsumed > 0) {
-        return Number((numericUnitSnapshot * creditsConsumed).toFixed(2))
+      if (
+        typeof t.unitCostSnapshot === 'number' &&
+        Number.isFinite(t.unitCostSnapshot) &&
+        typeof t.creditsDelta === 'number' &&
+        t.creditsDelta < 0
+      ) {
+        return Number((Math.abs(t.creditsDelta) * t.unitCostSnapshot).toFixed(2))
       }
 
-      const currentUnitCost = getServidorUnitCost(srv)
-      return Number((creditsConsumed * currentUnitCost).toFixed(2))
+      const creditsConsumed =
+        typeof t.creditsDelta === 'number' && t.creditsDelta < 0
+          ? Math.abs(t.creditsDelta)
+          : 0
+
+      return Number((creditsConsumed * getServidorUnitCost(srv)).toFixed(2))
     }
 
     return servidores.map(srv => {
@@ -79,7 +71,7 @@ export function ServerProfit({ transactions, servidores, month, year }: ServerPr
 
       return {
         nome: srv.nome,
-        revenue,
+        revenue: Number(revenue.toFixed(2)),
         cost: Number(cost.toFixed(2)),
         profit: Number(profit.toFixed(2)),
         margin,

@@ -69,14 +69,22 @@ export function SaidasRapidasList({ saidas, servidores, onAdd, onUpdate, onDelet
   const [filtroCategoria, setFiltroCategoria] = useState<string>('all')
   const [loading, setLoading] = useState(false)
 
+  const getServidorValorUnitario = (serverId?: string) => {
+    if (!serverId) return 0
+    const servidor = servidores.find(s => s.id === serverId)
+    return servidor?.custoUnitario ?? 0
+  }
+
   const handleOpen = (saida?: SaidaRapida) => {
     if (saida) {
+      const valorServidor = getServidorValorUnitario(saida.serverId)
+
       setEditingSaida(saida)
       setForm({
         nome: saida.nome,
         categoria: saida.categoria,
         serverId: saida.serverId,
-        valorUnitario: saida.valorUnitario,
+        valorUnitario: saida.serverId ? valorServidor : saida.valorUnitario,
         usaQuantidade: saida.usaQuantidade,
         descricaoPadrao: saida.descricaoPadrao,
       })
@@ -89,11 +97,17 @@ export function SaidasRapidasList({ saidas, servidores, onAdd, onUpdate, onDelet
 
   const handleSave = async () => {
     if (!form.nome.trim()) return
+
+    const payload: Omit<SaidaRapida, 'id'> = {
+      ...form,
+      valorUnitario: form.serverId ? getServidorValorUnitario(form.serverId) : form.valorUnitario,
+    }
+
     setLoading(true)
     if (editingSaida) {
-      await onUpdate({ id: editingSaida.id, ...form })
+      await onUpdate({ id: editingSaida.id, ...payload })
     } else {
-      await onAdd(form)
+      await onAdd(payload)
     }
     setLoading(false)
     setDialogOpen(false)
@@ -110,6 +124,7 @@ export function SaidasRapidasList({ saidas, servidores, onAdd, onUpdate, onDelet
     : saidas.filter(s => s.categoria === filtroCategoria)
 
   const getServidorNome = (id?: string) => id ? servidores.find(s => s.id === id)?.nome ?? '—' : '—'
+  const getSaidaValorUnitario = (saida: SaidaRapida) => saida.serverId ? getServidorValorUnitario(saida.serverId) : saida.valorUnitario
 
   return (
     <div className="space-y-4">
@@ -126,7 +141,6 @@ export function SaidasRapidasList({ saidas, servidores, onAdd, onUpdate, onDelet
         </Button>
       </div>
 
-      {/* Filtro por categoria */}
       <div className="flex items-center gap-2">
         <Label className="text-sm">Filtrar por categoria:</Label>
         <Select value={filtroCategoria} onValueChange={setFiltroCategoria}>
@@ -161,7 +175,7 @@ export function SaidasRapidasList({ saidas, servidores, onAdd, onUpdate, onDelet
                 <TableCell className="font-medium">{s.nome}</TableCell>
                 <TableCell>{s.categoria}</TableCell>
                 <TableCell>{getServidorNome(s.serverId)}</TableCell>
-                <TableCell className="text-right">{formatCurrency(s.valorUnitario)}</TableCell>
+                <TableCell className="text-right">{formatCurrency(getSaidaValorUnitario(s))}</TableCell>
                 <TableCell className="text-center">{s.usaQuantidade ? '✓' : '—'}</TableCell>
                 <TableCell className="max-w-[200px] truncate">{s.descricaoPadrao || '—'}</TableCell>
                 <TableCell className="text-right">
@@ -203,7 +217,6 @@ export function SaidasRapidasList({ saidas, servidores, onAdd, onUpdate, onDelet
         </Table>
       </div>
 
-      {/* Dialog de edição/adição */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -240,7 +253,27 @@ export function SaidasRapidasList({ saidas, servidores, onAdd, onUpdate, onDelet
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Servidor (opcional)</Label>
-                <Select value={form.serverId || 'none'} onValueChange={v => setForm({ ...form, serverId: v === 'none' ? undefined : v })}>
+                <Select
+                  value={form.serverId || 'none'}
+                  onValueChange={v => {
+                    if (v === 'none') {
+                      setForm({
+                        ...form,
+                        serverId: undefined,
+                        valorUnitario: 0,
+                      })
+                      return
+                    }
+
+                    const valorUnitarioServidor = getServidorValorUnitario(v)
+
+                    setForm({
+                      ...form,
+                      serverId: v,
+                      valorUnitario: valorUnitarioServidor,
+                    })
+                  }}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Nenhum" />
                   </SelectTrigger>
@@ -253,13 +286,13 @@ export function SaidasRapidasList({ saidas, servidores, onAdd, onUpdate, onDelet
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Valor Unitário</Label>
+                <Label>Valor Unitário {form.serverId && '(automático do servidor)'}</Label>
                 <Input
                   type="number"
                   step="0.01"
                   value={form.valorUnitario || ''}
                   onChange={e => setForm({ ...form, valorUnitario: parseFloat(e.target.value) || 0 })}
-                  disabled={loading}
+                  disabled={loading || !!form.serverId}
                 />
               </div>
             </div>

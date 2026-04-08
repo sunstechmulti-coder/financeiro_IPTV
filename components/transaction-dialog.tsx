@@ -137,8 +137,13 @@ export function TransactionDialog({
   // ── Derived ──────────────────────────────────────────────────────────────────
 
   const planosDoServidor = planos.filter((p) => p.servidorId === servidorId)
-  const planosRenovacao = planosDoServidor.filter((p) => p.tipo === 'renovacao')
-  const planosNovo = planosDoServidor.filter((p) => p.tipo === 'novo')
+  const planosRenovacao = planosDoServidor
+    .filter((p) => p.tipo === 'renovacao')
+    .sort((a, b) => a.meses - b.meses)
+
+  const planosNovo = planosDoServidor
+    .filter((p) => p.tipo === 'novo')
+    .sort((a, b) => a.meses - b.meses)
 
   const selectedPlano = planos.find((p) => p.id === planoId) ?? null
   const selectedSaida = saidasRapidas.find((s) => s.id === saidaId) ?? null

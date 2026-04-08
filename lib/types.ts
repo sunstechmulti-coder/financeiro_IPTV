@@ -10,7 +10,10 @@ export interface Transaction {
   serverId?: string
   creditsDelta?: number  // positive = purchased, negative = sold
 
-
+  // snapshots financeiros (NOVO)
+  unitCostSnapshot?: number
+  costSnapshot?: number
+  profitSnapshot?: number
 }
 
 export type SortDirection = 'asc' | 'desc'

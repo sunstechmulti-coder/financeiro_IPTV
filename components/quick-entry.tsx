@@ -44,6 +44,24 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
 
   const getServidor = useCallback((id: string) => servidores.find(s => s.id === id), [servidores])
 
+  const getServidorUnitCost = useCallback((servidorId: string) => {
+    const servidor = servidores.find(s => s.id === servidorId)
+    if (!servidor) return 0
+
+    const raw = servidor as unknown as Record<string, unknown>
+    const value =
+      raw.unit_cost ??
+      raw.unitCost ??
+      raw.custo_unitario ??
+      raw.custoUnitario ??
+      raw.custo ??
+      raw.custoUnitarioCredito ??
+      0
+
+    const numericValue = Number(value)
+    return Number.isFinite(numericValue) ? numericValue : 0
+  }, [servidores])
+
   // Search planos by code as user types
   useEffect(() => {
     const q = codigoInput.trim().toUpperCase()
@@ -100,7 +118,8 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
   const saldoAtual = servidor?.creditsBalance ?? 0
   const creditosUsados = matchedPlano?.creditos ?? 0
   const saldoRestante = saldoAtual - creditosUsados
-  const custoTotal = matchedPlano?.custo ?? 0
+  const unitCost = matchedPlano ? getServidorUnitCost(matchedPlano.servidorId) : 0
+  const custoTotal = Number((unitCost * creditosUsados).toFixed(2))
   const lucro = valorFinal - custoTotal
   const canSave = matchedPlano && valorFinal > 0 && saldoRestante >= 0
 

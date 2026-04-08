@@ -5,9 +5,11 @@ export interface Transaction {
   description: string
   amount: number
   createdAt: string
-  // optional credit tracking
   serverId?: string
-  creditsDelta?: number  // positive = purchased, negative = sold
+  creditsDelta?: number
+  unitCostSnapshot?: number
+  costSnapshot?: number
+  profitSnapshot?: number
 }
 
 export type SortDirection = 'asc' | 'desc'

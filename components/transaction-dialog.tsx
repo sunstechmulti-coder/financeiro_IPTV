@@ -116,7 +116,6 @@ export function TransactionDialog({
     if (!group) return 0
     const tier = group.faixas.find(t => qty >= t.min && qty <= t.max)
     if (tier) return tier.preco
-    // If above max tier, use last tier price
     const lastTier = group.faixas[group.faixas.length - 1]
     if (lastTier && qty > lastTier.max) return lastTier.preco
     return 0
@@ -138,16 +137,34 @@ export function TransactionDialog({
   // ── Derived ──────────────────────────────────────────────────────────────────
 
   const planosDoServidor = planos.filter((p) => p.servidorId === servidorId)
-  const planosRenovacao  = planosDoServidor.filter((p) => p.tipo === 'renovacao')
-  const planosNovo       = planosDoServidor.filter((p) => p.tipo === 'novo')
+  const planosRenovacao = planosDoServidor.filter((p) => p.tipo === 'renovacao')
+  const planosNovo = planosDoServidor.filter((p) => p.tipo === 'novo')
 
   const selectedPlano = planos.find((p) => p.id === planoId) ?? null
   const selectedSaida = saidasRapidas.find((s) => s.id === saidaId) ?? null
 
+  const getServidorUnitCost = (servidorId: string) => {
+    const servidor = servidores.find((s) => s.id === servidorId)
+    if (!servidor) return 0
+
+    const raw = servidor as unknown as Record<string, unknown>
+    const value =
+      raw.unit_cost ??
+      raw.unitCost ??
+      raw.custo_unitario ??
+      raw.custoUnitario ??
+      raw.custo ??
+      raw.custoUnitarioCredito ??
+      0
+
+    const numericValue = Number(value)
+    return Number.isFinite(numericValue) ? numericValue : 0
+  }
+
   // Fractional quantity support
-  const entradaServidor        = servidores.find((s) => s.id === servidorId)
+  const entradaServidor = servidores.find((s) => s.id === servidorId)
   const permiteVendaFracionada = entradaServidor?.permiteVendaFracionada ?? false
-  const qtdEfetiva             = permiteVendaFracionada
+  const qtdEfetiva = permiteVendaFracionada
     ? (parseFloat(qtdFracionada.replace(',', '.')) || 0)
     : qtdEntrada
 
@@ -155,19 +172,20 @@ export function TransactionDialog({
   const valorVendaUnitario = valorVendaOverride
     ? (parseFloat(valorVendaOverride.replace(',', '.')) || 0)
     : (selectedPlano?.valorVenda ?? 0)
-  const totalVenda    = valorVendaUnitario * qtdEfetiva
-  const totalCusto    = selectedPlano ? selectedPlano.custo      * qtdEfetiva : 0
-  const totalLucro    = totalVenda - totalCusto
-  const totalCreditos = selectedPlano ? selectedPlano.creditos   * qtdEfetiva : 0
+  const totalVenda = valorVendaUnitario * qtdEfetiva
+  const totalCreditos = selectedPlano ? selectedPlano.creditos * qtdEfetiva : 0
+  const custoUnitarioAtual = selectedPlano ? getServidorUnitCost(selectedPlano.servidorId) : 0
+  const totalCusto = Number((custoUnitarioAtual * totalCreditos).toFixed(2))
+  const totalLucro = totalVenda - totalCusto
 
   // Credit balance checks — entry (selling a plan)
-  const currentBalance      = entradaServidor?.creditsBalance ?? 0
-  const afterSaleBalance    = currentBalance - totalCreditos
+  const currentBalance = entradaServidor?.creditsBalance ?? 0
+  const afterSaleBalance = currentBalance - totalCreditos
   const insufficientCredits = selectedPlano !== null && totalCreditos > 0 && afterSaleBalance < 0
 
   // Credit balance checks — expense (buying credits)
-  const saidaServidor        = selectedSaida?.serverId ? servidores.find((s) => s.id === selectedSaida.serverId) : null
-  const saidaCurrentBalance  = saidaServidor?.creditsBalance ?? 0
+  const saidaServidor = selectedSaida?.serverId ? servidores.find((s) => s.id === selectedSaida.serverId) : null
+  const saidaCurrentBalance = saidaServidor?.creditsBalance ?? 0
   const afterPurchaseBalance = saidaCurrentBalance + (selectedSaida?.usaQuantidade ? qtdSaida : 1)
 
   // Saída totals
@@ -189,8 +207,8 @@ export function TransactionDialog({
     ? servidores.find((s) => s.id === selectedActivationProduct.linkedServerId)
     : null
   const activationCurrentBalance = activationServidor?.creditsBalance ?? 0
-  const activationAfterBalance   = activationCurrentBalance - (activationCusto ?? 0)
-  const activationInsufficient   =
+  const activationAfterBalance = activationCurrentBalance - (activationCusto ?? 0)
+  const activationInsufficient =
     activationServidor !== null &&
     activationCusto !== null &&
     activationAfterBalance < 0
@@ -216,7 +234,6 @@ export function TransactionDialog({
       setAmount(transaction.amount.toFixed(2).replace('.', ','))
       setModo('manual')
     } else {
-      // Keep the current date between entries (don't reset)
       setType('income')
       setDescription('')
       setAmount('')
@@ -275,7 +292,7 @@ export function TransactionDialog({
     )
   }, [saidaId])
 
-  // ── Validation ───────────���─────────────────────────────────────────────────
+  // ── Validation ─────────────────────────────────────────────────────────────
 
   const isEntradaRapidaValid =
     modo === 'rapido' && type === 'income' && selectedPlano !== null && qtdEfetiva > 0 && valorVendaUnitario > 0 && !insufficientCredits
@@ -325,9 +342,13 @@ export function TransactionDialog({
         createdAt: now,
         serverId: selectedPlano.servidorId,
         creditsDelta: -totalCreditos,
+
+        // SNAPSHOT FINANCEIRO
+        unitCostSnapshot: custoUnitarioAtual,
+        costSnapshot: totalCusto,
+        profitSnapshot: totalLucro,
       }
 
-      // Ajustar créditos via Supabase
       if (onAdjustCredits) {
         await onAdjustCredits(selectedPlano.servidorId, -totalCreditos)
       }
@@ -345,6 +366,7 @@ export function TransactionDialog({
       } else {
         onSave(income)
       }
+
       onOpenChange(false)
       return
     }
@@ -373,7 +395,6 @@ export function TransactionDialog({
       return
     }
 
-
     // ── Saída rápida ─────────────────────────────────────────────────────────
     if (isSaidaRapidaValid && selectedSaida) {
       const creditsQty = selectedSaida.usaQuantidade ? qtdSaida : 0
@@ -395,7 +416,6 @@ export function TransactionDialog({
         creditsDelta: selectedSaida.categoria === 'Servidor' ? creditsQty : undefined,
       }
 
-      // Ajustar créditos via Supabase
       if (selectedSaida.categoria === 'Servidor' && selectedSaida.serverId && creditsQty > 0 && onAdjustCredits) {
         await onAdjustCredits(selectedSaida.serverId, creditsQty)
       }
@@ -421,7 +441,6 @@ export function TransactionDialog({
         creditsDelta: selectedActivationProduct.linkedServerId ? -activationCusto : undefined,
       }
 
-      // Consume balance from linked server (if configured)
       if (selectedActivationProduct.linkedServerId && onAdjustCredits) {
         await onAdjustCredits(selectedActivationProduct.linkedServerId, -activationCusto)
       }
@@ -439,6 +458,7 @@ export function TransactionDialog({
       } else {
         onSave(income)
       }
+
       onOpenChange(false)
       return
     }
@@ -453,10 +473,10 @@ export function TransactionDialog({
       amount: numericAmount,
       createdAt: transaction?.createdAt || now,
     }
+
     onSave(tx)
     onOpenChange(false)
   }
-
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
@@ -473,7 +493,6 @@ export function TransactionDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {/* Date — always visible */}
         <div className="grid gap-2">
           <Label htmlFor="date">Data</Label>
           <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
@@ -513,10 +532,7 @@ export function TransactionDialog({
               <TabsTrigger value="manual">Manual</TabsTrigger>
             </TabsList>
 
-            {/* ── LANÇAMENTO RÁPIDO ── */}
             <TabsContent value="rapido" className="space-y-4 mt-4">
-
-              {/* Tipo: Entrada / Saída */}
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
@@ -544,10 +560,8 @@ export function TransactionDialog({
                 </button>
               </div>
 
-              {/* ── Entrada rápida ── */}
               {type === 'income' && (
                 <div className="space-y-3">
-                  {/* Servidor */}
                   <div className="grid gap-2">
                     <Label>Servidor</Label>
                     <Select value={servidorId} onValueChange={setServidorId}>
@@ -572,7 +586,6 @@ export function TransactionDialog({
                     </Select>
                   </div>
 
-                  {/* Saldo do servidor */}
                   {servidorId && entradaServidor && (
                     <div className="flex items-center justify-between rounded-md border bg-muted/30 px-3 py-2">
                       <span className="text-xs text-muted-foreground">Saldo disponível em {entradaServidor.nome}:</span>
@@ -585,7 +598,6 @@ export function TransactionDialog({
                     </div>
                   )}
 
-                  {/* Plano */}
                   {servidorId && (
                     <div className="grid gap-2">
                       <Label>Plano</Label>
@@ -625,7 +637,6 @@ export function TransactionDialog({
                     </div>
                   )}
 
-                  {/* Quantidade */}
                   {selectedPlano && (
                     <div className="grid gap-2">
                       <Label>Quantidade</Label>
@@ -658,7 +669,6 @@ export function TransactionDialog({
                     </div>
                   )}
 
-                  {/* Valor de venda editável */}
                   {selectedPlano && (
                     <div className="grid gap-2">
                       <Label>Valor de venda (R$)</Label>
@@ -681,7 +691,6 @@ export function TransactionDialog({
                     </div>
                   )}
 
-                  {/* Alerta créditos insuficientes */}
                   {selectedPlano && insufficientCredits && (
                     <div className="flex items-start gap-2 rounded-lg border border-destructive/50 bg-destructive/10 p-3">
                       <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-destructive" />
@@ -695,7 +704,6 @@ export function TransactionDialog({
                     </div>
                   )}
 
-                  {/* Resumo entrada */}
                   {selectedPlano && !insufficientCredits && (
                     <div className="rounded-lg border bg-muted/40 p-4 space-y-2">
                       <div className="flex justify-between text-sm">
@@ -732,7 +740,6 @@ export function TransactionDialog({
                     </div>
                   )}
 
-                  {/* Registrar custo */}
                   {selectedPlano && !insufficientCredits && (
                     <div className="flex items-center gap-2">
                       <Checkbox
@@ -748,7 +755,6 @@ export function TransactionDialog({
                 </div>
               )}
 
-              {/* ── Saída rápida ── */}
               {type === 'expense' && (
                 <div className="space-y-3">
                   <div className="grid gap-2">
@@ -861,7 +867,6 @@ export function TransactionDialog({
               )}
             </TabsContent>
 
-            {/* ── ATIVAÇÃO ── */}
             <TabsContent value="ativacao" className="space-y-4 mt-4">
               {activationProducts.length === 0 ? (
                 <div className="rounded-lg border border-dashed p-6 text-center">
@@ -873,7 +878,6 @@ export function TransactionDialog({
                 </div>
               ) : (
                 <>
-                  {/* Produto */}
                   <div className="grid gap-2">
                     <Label>Produto</Label>
                     <Select value={activationProductId} onValueChange={setActivationProductId}>
@@ -893,7 +897,6 @@ export function TransactionDialog({
                     </Select>
                   </div>
 
-                  {/* Saldo do servidor vinculado */}
                   {selectedActivationProduct?.linkedServerId && activationServidor && (
                     <div className="flex items-center justify-between rounded-md border bg-muted/30 px-3 py-2">
                       <span className="text-xs text-muted-foreground">
@@ -908,7 +911,6 @@ export function TransactionDialog({
                     </div>
                   )}
 
-                  {/* Custo */}
                   {selectedActivationProduct && (
                     <div className="grid gap-2">
                       <Label>Custo de ativação</Label>
@@ -939,7 +941,6 @@ export function TransactionDialog({
                     </div>
                   )}
 
-                  {/* Alerta saldo insuficiente */}
                   {activationInsufficient && activationCusto !== null && (
                     <div className="flex items-start gap-2 rounded-lg border border-destructive/50 bg-destructive/10 p-3">
                       <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-destructive" />
@@ -954,7 +955,6 @@ export function TransactionDialog({
                     </div>
                   )}
 
-                  {/* Resumo */}
                   {selectedActivationProduct && activationCusto !== null && activationSalePrice > 0 && !activationInsufficient && (
                     <div className="rounded-lg border bg-muted/40 p-4 space-y-2">
                       <div className="flex justify-between text-sm">
@@ -995,7 +995,6 @@ export function TransactionDialog({
                     </div>
                   )}
 
-                  {/* Checkbox registrar custo */}
                   {selectedActivationProduct && activationCusto !== null && activationSalePrice > 0 && !activationInsufficient && (
                     <div className="flex items-center gap-2">
                       <Checkbox
@@ -1012,10 +1011,7 @@ export function TransactionDialog({
               )}
             </TabsContent>
 
-
-            {/* ── REVENDA DE CRÉDITOS ── */}
             <TabsContent value="revenda" className="space-y-4 mt-4">
-              {/* Servidor */}
               <div className="grid gap-2">
                 <Label>Servidor</Label>
                 <Select value={revendaServidorId} onValueChange={setRevendaServidorId}>
@@ -1032,7 +1028,6 @@ export function TransactionDialog({
                 </Select>
               </div>
 
-              {/* Pricing tier info */}
               {revendaServidor && revendaGroupInfo && (
                 <div className="rounded-md border bg-muted/30 p-3 space-y-1.5">
                   <span className="text-xs font-medium text-muted-foreground">Tabela de preços — {revendaServidor.nome}</span>
@@ -1059,7 +1054,6 @@ export function TransactionDialog({
                 </div>
               )}
 
-              {/* Quantity */}
               {revendaServidor && revendaGroupInfo && (
                 <>
                   <div className="grid gap-2">
@@ -1078,7 +1072,6 @@ export function TransactionDialog({
                     )}
                   </div>
 
-                  {/* Value override */}
                   {revendaQtdNum >= 10 && (
                     <div className="grid gap-2">
                       <Label>Valor total (R$)</Label>
@@ -1099,7 +1092,6 @@ export function TransactionDialog({
                     </div>
                   )}
 
-                  {/* Insufficient credits */}
                   {revendaInsuficiente && (
                     <div className="flex items-center gap-2 text-sm text-destructive">
                       <AlertCircle className="h-4 w-4" />
@@ -1107,7 +1099,6 @@ export function TransactionDialog({
                     </div>
                   )}
 
-                  {/* Summary */}
                   {revendaQtdNum >= 10 && revendaValorFinal > 0 && !revendaInsuficiente && (
                     <div className="rounded-lg border bg-muted/40 p-4 space-y-2">
                       <div className="flex justify-between text-sm">
@@ -1132,7 +1123,6 @@ export function TransactionDialog({
               )}
             </TabsContent>
 
-            {/* ── MANUAL ── */}
             <TabsContent value="manual" className="space-y-4 mt-4">
               <div className="grid gap-2">
                 <Label>Tipo</Label>
@@ -1181,7 +1171,6 @@ export function TransactionDialog({
             </TabsContent>
           </Tabs>
         ) : (
-          /* Edit mode — manual only */
           <div className="space-y-4 mt-2">
             <div className="grid gap-2">
               <Label>Tipo</Label>

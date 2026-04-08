@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { formatCurrency } from '@/lib/format'
-import type { Transaction, Servidor } from '@/lib/types'
+import type { Transaction, Servidor, CreditMovement } from '@/lib/types'
 
 interface ServerProfitProps {
   transactions: Transaction[]
@@ -15,27 +15,67 @@ interface ServerProfitProps {
 
 export function ServerProfit({ transactions, servidores, month, year }: ServerProfitProps) {
   const data = useMemo(() => {
+    const getServidorUnitCost = (srv: Servidor) => {
+      const raw = srv as unknown as Record<string, unknown>
+      const value =
+        raw.unit_cost ??
+        raw.unitCost ??
+        raw.custo_unitario ??
+        raw.custoUnitario ??
+        raw.custo ??
+        raw.custoUnitarioCredito ??
+        0
+
+      const numericValue = Number(value)
+      return Number.isFinite(numericValue) ? numericValue : 0
+    }
+
+    const getTransactionCost = (t: Transaction, srv: Servidor) => {
+      if (typeof t.costSnapshot === 'number' && Number.isFinite(t.costSnapshot)) {
+        return t.costSnapshot
+      }
+
+      if (
+        typeof t.unitCostSnapshot === 'number' &&
+        Number.isFinite(t.unitCostSnapshot) &&
+        typeof t.creditsDelta === 'number' &&
+        t.creditsDelta < 0
+      ) {
+        return Number((Math.abs(t.creditsDelta) * t.unitCostSnapshot).toFixed(2))
+      }
+
+      const creditsConsumed =
+        typeof t.creditsDelta === 'number' && t.creditsDelta < 0
+          ? Math.abs(t.creditsDelta)
+          : 0
+
+      return Number((creditsConsumed * getServidorUnitCost(srv)).toFixed(2))
+    }
+
     return servidores.map(srv => {
       const txsThisMonth = transactions.filter(t => {
         const d = new Date(t.date + 'T00:00:00')
         return t.serverId === srv.id && d.getMonth() === month && d.getFullYear() === year
       })
 
-      const revenue = txsThisMonth
-        .filter(t => t.type === 'income')
-        .reduce((s, t) => s + t.amount, 0)
+      const incomeTxs = txsThisMonth.filter(t => t.type === 'income')
 
-      // Custo real = soma dos créditos consumidos × custo unitário do servidor
-      // creditsDelta é negativo quando créditos são consumidos (venda de plano)
-      const creditsConsumed = txsThisMonth
-        .filter(t => t.type === 'income' && t.creditsDelta != null && t.creditsDelta < 0)
-        .reduce((s, t) => s + Math.abs(t.creditsDelta!), 0)
+      const revenue = incomeTxs.reduce((s, t) => s + t.amount, 0)
 
-      const cost = creditsConsumed * srv.custoUnitario
+      const cost = incomeTxs
+        .filter(t => t.creditsDelta != null && t.creditsDelta < 0)
+        .reduce((s, t) => s + getTransactionCost(t, srv), 0)
+
       const profit = revenue - cost
       const margin = revenue > 0 ? (profit / revenue) * 100 : 0
 
-      return { nome: srv.nome, revenue, cost, profit, margin }
+      return {
+        nome: srv.nome,
+        revenue: Number(revenue.toFixed(2)),
+        cost: Number(cost.toFixed(2)),
+        profit: Number(profit.toFixed(2)),
+        margin,
+      }
     }).filter(s => s.revenue > 0 || s.cost > 0)
   }, [transactions, servidores, month, year])
 

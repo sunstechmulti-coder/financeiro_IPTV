@@ -100,8 +100,7 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
   const saldoAtual = servidor?.creditsBalance ?? 0
   const creditosUsados = matchedPlano?.creditos ?? 0
   const saldoRestante = saldoAtual - creditosUsados
-  const unitCost = Number(servidor?.unit_cost ?? servidor?.unitCost ?? 0)
-  const custoTotal = Number((unitCost * creditosUsados).toFixed(2))
+  const custoTotal = matchedPlano?.custo ?? 0
   const lucro = valorFinal - custoTotal
   const canSave = matchedPlano && valorFinal > 0 && saldoRestante >= 0
 

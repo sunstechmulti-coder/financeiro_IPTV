@@ -7,9 +7,7 @@ export interface Transaction {
   createdAt: string
   serverId?: string
   creditsDelta?: number
-  unitCostSnapshot?: number
-  costSnapshot?: number
-  profitSnapshot?: number
+
 }
 
 export type SortDirection = 'asc' | 'desc'

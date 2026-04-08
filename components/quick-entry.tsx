@@ -140,6 +140,11 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
         createdAt: now,
         serverId: matchedPlano.servidorId,
         creditsDelta: -creditosUsados,
+
+        // SNAPSHOT FINANCEIRO (novo)
+        unitCostSnapshot: unitCost,
+        costSnapshot: custoTotal,
+        profitSnapshot: lucro
       }
 
       if (onAdjustCredits) {

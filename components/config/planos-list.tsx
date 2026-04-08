@@ -90,6 +90,14 @@ export function PlanosList({ planos, servidores, onAdd, onUpdate, onDelete }: Pl
     return Number.isFinite(numericValue) ? numericValue : 0
   }
 
+  const getPlanoCustoAtual = (plano: PlanoEntrada) => {
+    return Number((getServidorUnitCost(plano.servidorId) * Number(plano.creditos || 0)).toFixed(2))
+  }
+
+  const getPlanoLucroAtual = (plano: PlanoEntrada) => {
+    return Number(plano.valorVenda || 0) - getPlanoCustoAtual(plano)
+  }
+
   const lucroCalculado = Number(form.valorVenda || 0) - Number(form.custo || 0)
 
   const codigoEmUso = useMemo(() => {
@@ -253,70 +261,75 @@ export function PlanosList({ planos, servidores, onAdd, onUpdate, onDelete }: Pl
             </TableRow>
           </TableHeader>
           <TableBody>
-            {planosFiltrados.map(p => (
-              <TableRow key={p.id}>
-                <TableCell className="font-medium">{p.codigo}</TableCell>
-                <TableCell>{p.descricao}</TableCell>
-                <TableCell>{getServidorNome(p.servidorId)}</TableCell>
-                <TableCell>
-                  <span className={p.tipo === 'novo' ? 'text-emerald-400 font-medium' : 'text-blue-400 font-medium'}>
-                    {p.tipo === 'renovacao' ? 'Renovação' : 'Novo'}
-                  </span>
-                </TableCell>
-                <TableCell className="text-right">{p.meses}</TableCell>
-                <TableCell className="text-right">{p.creditos}</TableCell>
-                <TableCell className="text-right">{formatCurrency(p.valorVenda)}</TableCell>
-                <TableCell className="text-right">{formatCurrency(p.custo)}</TableCell>
-                <TableCell className="text-right text-green-500">
-                  {formatCurrency(p.valorVenda - p.custo)}
-                </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => handleOpen(p, 'duplicate')}
-                      disabled={loading}
-                      title="Duplicar plano"
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
+            {planosFiltrados.map(p => {
+              const custoAtual = getPlanoCustoAtual(p)
+              const lucroAtual = getPlanoLucroAtual(p)
 
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => handleOpen(p, 'edit')}
-                      disabled={loading}
-                      title="Editar plano"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
+              return (
+                <TableRow key={p.id}>
+                  <TableCell className="font-medium">{p.codigo}</TableCell>
+                  <TableCell>{p.descricao}</TableCell>
+                  <TableCell>{getServidorNome(p.servidorId)}</TableCell>
+                  <TableCell>
+                    <span className={p.tipo === 'novo' ? 'text-emerald-400 font-medium' : 'text-blue-400 font-medium'}>
+                      {p.tipo === 'renovacao' ? 'Renovação' : 'Novo'}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-right">{p.meses}</TableCell>
+                  <TableCell className="text-right">{p.creditos}</TableCell>
+                  <TableCell className="text-right">{formatCurrency(p.valorVenda)}</TableCell>
+                  <TableCell className="text-right">{formatCurrency(custoAtual)}</TableCell>
+                  <TableCell className="text-right text-green-500">
+                    {formatCurrency(lucroAtual)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => handleOpen(p, 'duplicate')}
+                        disabled={loading}
+                        title="Duplicar plano"
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
 
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" disabled={loading} title="Excluir plano">
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Excluir plano?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Esta ação não pode ser desfeita.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => handleDelete(p.id)}>Excluir</AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => handleOpen(p, 'edit')}
+                        disabled={loading}
+                        title="Editar plano"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" disabled={loading} title="Excluir plano">
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Excluir plano?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Esta ação não pode ser desfeita.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDelete(p.id)}>Excluir</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )
+            })}
 
             {planosFiltrados.length === 0 && (
               <TableRow>

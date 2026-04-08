@@ -18,29 +18,29 @@ export function KpiCards({ transactions, month, year, prevTransactions }: KpiCar
     return d.getMonth() === month && d.getFullYear() === year
   })
 
-  const income   = filtered.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
+  const income = filtered.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
   const expenses = filtered.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
-  const profit   = income - expenses
-  const sales    = filtered.filter(t => t.type === 'income').length
-  const ticket   = sales > 0 ? income / sales : 0
+  const profit = income - expenses
+  const sales = filtered.filter(t => t.type === 'income').length
+  const ticket = sales > 0 ? income / sales : 0
 
   const prevFiltered = prevTransactions.filter(t => {
     const prev = new Date(year, month - 1, 1)
     const d = new Date(t.date + 'T00:00:00')
     return d.getMonth() === prev.getMonth() && d.getFullYear() === prev.getFullYear()
   })
-  const prevIncome   = prevFiltered.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
+  const prevIncome = prevFiltered.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
   const prevExpenses = prevFiltered.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
-  const prevProfit   = prevIncome - prevExpenses
+  const prevProfit = prevIncome - prevExpenses
 
   const pctChange = (curr: number, prev: number) => {
     if (prev === 0) return null
     return ((curr - prev) / Math.abs(prev)) * 100
   }
 
-  const incomePct   = pctChange(income, prevIncome)
+  const incomePct = pctChange(income, prevIncome)
   const expensesPct = pctChange(expenses, prevExpenses)
-  const profitPct   = pctChange(profit, prevProfit)
+  const profitPct = pctChange(profit, prevProfit)
 
   const kpis = [
     {
@@ -106,7 +106,7 @@ export function KpiCards({ transactions, month, year, prevTransactions }: KpiCar
               <div className="flex items-start justify-between gap-2">
                 <div className="space-y-1 min-w-0">
                   <p className="text-xs text-muted-foreground">{label}</p>
-                  <p className="text-xl font-bold truncate">{value}</p>
+                  <p className="text-xl font-bold">{value}</p>
                   {pct !== null && (
                     <div className={`flex items-center gap-0.5 text-xs font-medium ${isPositive ? 'text-income' : 'text-expense'}`}>
                       {isPositive

@@ -55,19 +55,17 @@ export function CreditsCard({ servidores, movements }: CreditsCardProps) {
               return (
                 <div
                   key={s.id}
-                  className={`rounded-lg border p-3 text-center ${
-                    bal === 0
+                  className={`rounded-lg border p-3 text-center ${bal === 0
                       ? 'border-border bg-muted/30'
                       : low
-                      ? 'border-amber-500/40 bg-amber-500/10'
-                      : 'border-income/30 bg-income/5'
-                  }`}
+                        ? 'border-amber-500/40 bg-amber-500/10'
+                        : 'border-income/30 bg-income/5'
+                    }`}
                 >
                   <p className="text-xs font-medium text-muted-foreground truncate">{s.nome}</p>
                   <p
-                    className={`mt-1 text-xl font-bold tabular-nums ${
-                      bal === 0 ? 'text-muted-foreground' : low ? 'text-amber-500' : 'text-income'
-                    }`}
+                    className={`mt-1 text-xl font-bold tabular-nums ${bal === 0 ? 'text-muted-foreground' : low ? 'text-amber-500' : 'text-income'
+                      }`}
                   >
                     {bal.toLocaleString('pt-BR')}
                   </p>
@@ -91,18 +89,16 @@ export function CreditsCard({ servidores, movements }: CreditsCardProps) {
                 <div key={m.id} className="flex items-center justify-between px-3 py-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <span
-                      className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                        m.type === 'purchase' ? 'bg-income' : 'bg-expense'
-                      }`}
+                      className={`h-1.5 w-1.5 shrink-0 rounded-full ${m.type === 'purchase' ? 'bg-income' : 'bg-expense'
+                        }`}
                     />
                     <span className="text-xs text-muted-foreground truncate">
                       {formatDate(m.date)} — {getServidorNome(m.serverId)}
                     </span>
                   </div>
                   <span
-                    className={`text-sm font-semibold tabular-nums shrink-0 ml-2 ${
-                      m.type === 'purchase' ? 'text-income' : 'text-expense'
-                    }`}
+                    className={`text-sm font-semibold tabular-nums shrink-0 ml-2 ${m.type === 'purchase' ? 'text-income' : 'text-expense'
+                      }`}
                   >
                     {m.type === 'purchase' ? '+' : '−'}{m.credits}
                   </span>
@@ -112,11 +108,7 @@ export function CreditsCard({ servidores, movements }: CreditsCardProps) {
           </div>
         )}
 
-        {recentMovements.length === 0 && (
-          <p className="text-xs text-muted-foreground text-center py-2">
-            Nenhuma movimentação de créditos ainda.
-          </p>
-        )}
+
       </CardContent>
     </Card>
   )

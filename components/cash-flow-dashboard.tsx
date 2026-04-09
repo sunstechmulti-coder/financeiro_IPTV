@@ -231,7 +231,7 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
             {userEmail && (
               <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-border">
                 <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                <span className="text-xs text-muted-foreground font-normal truncate max-w-[140px] hidden sm:inline">
+                <span className="text-xs text-muted-foreground font-normal truncate max-w-[140px] hidden lg:inline">
                   {userEmail}
                 </span>
                 {getSubscriptionBadge()}

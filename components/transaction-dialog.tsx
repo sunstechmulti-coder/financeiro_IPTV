@@ -166,6 +166,26 @@ export function TransactionDialog({
     return Number.isFinite(numericValue) ? numericValue : 0
   }
 
+  const getServidorQtdRecarga = (servidorId: string) => {
+    const servidor = servidores.find((s) => s.id === servidorId)
+    if (!servidor) return 1
+
+    const raw = servidor as unknown as Record<string, unknown>
+    const value =
+      raw.qtdRecarga ??
+      raw.qtd_recarga ??
+      raw.quantidadeRecarga ??
+      raw.quantidade_recarga ??
+      raw.rechargeQty ??
+      raw.recharge_qty ??
+      raw.quickRechargeQty ??
+      raw.quick_recharge_qty ??
+      1
+
+    const numericValue = Number(value)
+    return Number.isFinite(numericValue) && numericValue > 0 ? numericValue : 1
+  }
+
   // Fractional quantity support
   const entradaServidor = servidores.find((s) => s.id === servidorId)
   const permiteVendaFracionada = entradaServidor?.permiteVendaFracionada ?? false
@@ -289,13 +309,20 @@ export function TransactionDialog({
   }, [revendaQtdNum, revendaPricePerCredit])
 
   useEffect(() => {
-    setQtdSaida(1)
+    const defaultQty =
+      selectedSaida?.usaQuantidade &&
+        selectedSaida.categoria === 'Servidor' &&
+        selectedSaida.serverId
+        ? getServidorQtdRecarga(selectedSaida.serverId)
+        : 1
+
+    setQtdSaida(defaultQty)
     setValorManualSaida(
       selectedSaida && selectedSaida.valorUnitario > 0
         ? selectedSaida.valorUnitario.toFixed(2).replace('.', ',')
         : ''
     )
-  }, [saidaId])
+  }, [selectedSaida, servidores])
 
   // ── Validation ─────────────────────────────────────────────────────────────
 
@@ -811,21 +838,13 @@ export function TransactionDialog({
                       {selectedSaida.usaQuantidade && (
                         <div className="grid gap-2">
                           <Label>Quantidade (créditos)</Label>
-                          <Select
-                            value={String(qtdSaida)}
-                            onValueChange={(v) => setQtdSaida(Number(v))}
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {QUANTIDADES.map((q) => (
-                                <SelectItem key={q} value={String(q)}>
-                                  {q} {q === 1 ? 'crédito' : 'créditos'}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <Input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={qtdSaida === 0 ? '' : String(qtdSaida)}
+                            onChange={(e) => setQtdSaida(Number(e.target.value) || 0)}
+                          />
                         </div>
                       )}
 

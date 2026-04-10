@@ -241,6 +241,7 @@ export function useSupabaseData() {
         permite_venda_fracionada: servidor.permiteVendaFracionada || false,
         supplier_whatsapp: servidor.supplierWhatsapp?.trim() || null,
         risk_credits: servidor.riskCredits ?? 10,
+        recharge_quantity: servidor.rechargeQuantity ?? 10,
       })
       .select()
       .single()
@@ -264,6 +265,7 @@ export function useSupabaseData() {
         permite_venda_fracionada: servidor.permiteVendaFracionada || false,
         supplier_whatsapp: servidor.supplierWhatsapp?.trim() || null,
         risk_credits: servidor.riskCredits ?? 10,
+        recharge_quantity: servidor.rechargeQuantity ?? 10,
       })
       .eq('id', servidor.id)
       .select()

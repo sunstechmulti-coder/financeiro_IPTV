@@ -28,9 +28,16 @@ export function CreditsCard({ servidores, movements }: CreditsCardProps) {
 
     if (!digits) return null
 
+    const rechargeQuantity =
+      (servidor as Servidor & { rechargeQuantity?: number }).rechargeQuantity
+      ?? servidor.riskCredits
+      ?? 10
+
     const phone = digits.startsWith('55') ? digits : `55${digits}`
     const message = encodeURIComponent(
-      `Olá! Preciso solicitar recarga de créditos do servidor ${servidor.nome}. Saldo atual: ${servidor.creditsBalance ?? 0} créditos.`
+      `Olá! Preciso solicitar recarga de ${rechargeQuantity} créditos para o servidor ${servidor.nome}. Pode me confirmar o valor para pagamento, por favor?
+
+Pelo custo cadastrado, o valor estimado é de R$ ${(servidor.custoUnitario * rechargeQuantity).toFixed(2)}. Confere esse valor?`
     )
 
     return `https://wa.me/${phone}?text=${message}`
@@ -73,10 +80,10 @@ export function CreditsCard({ servidores, movements }: CreditsCardProps) {
                 <div
                   key={s.id}
                   className={`rounded-lg border p-3 text-center ${isZero
-                      ? 'border-red-500/40 bg-red-500/10'
-                      : isLow
-                        ? 'border-amber-500/40 bg-amber-500/10'
-                        : 'border-income/30 bg-income/5'
+                    ? 'border-red-500/40 bg-red-500/10'
+                    : isLow
+                      ? 'border-amber-500/40 bg-amber-500/10'
+                      : 'border-income/30 bg-income/5'
                     }`}
                 >
                   <p className="truncate text-xs font-medium text-muted-foreground">
@@ -85,10 +92,10 @@ export function CreditsCard({ servidores, movements }: CreditsCardProps) {
 
                   <p
                     className={`mt-1 text-xl font-bold tabular-nums ${isZero
-                        ? 'text-red-500'
-                        : isLow
-                          ? 'text-amber-500'
-                          : 'text-income'
+                      ? 'text-red-500'
+                      : isLow
+                        ? 'text-amber-500'
+                        : 'text-income'
                       }`}
                   >
                     {bal.toLocaleString('pt-BR')}
@@ -107,11 +114,10 @@ export function CreditsCard({ servidores, movements }: CreditsCardProps) {
                   {(isZero || isLow) && rechargeUrl && (
                     <Button
                       size="sm"
-                      variant={isZero ? 'destructive' : 'secondary'}
-                      className="mt-2 h-7 w-full text-xs"
+                      className="mt-2 h-8 w-full rounded-full bg-green-600 text-white hover:bg-green-700"
                       onClick={() => window.open(rechargeUrl, '_blank', 'noopener,noreferrer')}
                     >
-                      <MessageCircle className="mr-1 h-3.5 w-3.5" />
+                      <MessageCircle className="mr-1.5 h-3.5 w-3.5" />
                       Solicitar recarga
                     </Button>
                   )}

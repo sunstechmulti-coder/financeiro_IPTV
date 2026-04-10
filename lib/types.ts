@@ -25,6 +25,7 @@ export interface Servidor {
   permiteVendaFracionada?: boolean // permite quantidades decimais
   supplierWhatsapp?: string
   riskCredits?: number
+  rechargeQuantity?: number
 }
 
 export interface PlanoEntrada {

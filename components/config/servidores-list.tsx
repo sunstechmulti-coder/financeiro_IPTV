@@ -39,6 +39,7 @@ const EMPTY: Omit<Servidor, 'id'> = {
   supplierWhatsapp: '',
   custoUnitario: 0,
   riskCredits: 10,
+  rechargeQuantity: 10,
   creditsBalance: 0,
   permiteVendaFracionada: false,
 }
@@ -57,6 +58,7 @@ export function ServidoresList({ servidores, onAdd, onUpdate, onDelete }: Servid
       supplierWhatsapp: s.supplierWhatsapp ?? '',
       custoUnitario: s.custoUnitario,
       riskCredits: s.riskCredits ?? 10,
+      rechargeQuantity: s.rechargeQuantity ?? 10,
       creditsBalance: s.creditsBalance ?? 0,
       permiteVendaFracionada: s.permiteVendaFracionada ?? false,
     })
@@ -110,6 +112,7 @@ export function ServidoresList({ servidores, onAdd, onUpdate, onDelete }: Servid
               <TableHead>WhatsApp Fornecedor</TableHead>
               <TableHead>Custo Unitário</TableHead>
               <TableHead>Margem de Risco</TableHead>
+              <TableHead>Qtd. Recarga</TableHead>
               <TableHead className="text-center">Fracionado</TableHead>
               <TableHead className="text-right">Créditos Disponíveis</TableHead>
               <TableHead className="w-24 text-right">Ações</TableHead>
@@ -156,6 +159,18 @@ export function ServidoresList({ servidores, onAdd, onUpdate, onDelete }: Servid
                     placeholder="10"
                     value={addForm.riskCredits ?? 10}
                     onChange={(e) => setAddForm({ ...addForm, riskCredits: parseFloat(e.target.value) || 0 })}
+                    className="h-8 w-24"
+                    disabled={loading}
+                  />
+                </TableCell>
+                <TableCell>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.5"
+                    placeholder="10"
+                    value={addForm.rechargeQuantity ?? 10}
+                    onChange={(e) => setAddForm({ ...addForm, rechargeQuantity: parseFloat(e.target.value) || 0 })}
                     className="h-8 w-24"
                     disabled={loading}
                   />
@@ -233,6 +248,18 @@ export function ServidoresList({ servidores, onAdd, onUpdate, onDelete }: Servid
                       disabled={loading}
                     />
                   </TableCell>
+                  <TableCell>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.5"
+                      value={editForm.rechargeQuantity ?? 10}
+                      onChange={(e) => setEditForm({ ...editForm, rechargeQuantity: parseFloat(e.target.value) || 0 })}
+                      className="h-8 w-24"
+                      placeholder="10"
+                      disabled={loading}
+                    />
+                  </TableCell>
                   <TableCell className="text-center">
                     <Checkbox
                       checked={editForm.permiteVendaFracionada}
@@ -268,6 +295,7 @@ export function ServidoresList({ servidores, onAdd, onUpdate, onDelete }: Servid
                   <TableCell>{s.supplierWhatsapp || '-'}</TableCell>
                   <TableCell>{formatCurrency(s.custoUnitario)}</TableCell>
                   <TableCell>{s.riskCredits ?? 10}</TableCell>
+                  <TableCell>{s.rechargeQuantity ?? 10}</TableCell>
                   <TableCell className="text-center">
                     {s.permiteVendaFracionada ? <Check className="mx-auto h-4 w-4 text-green-500" /> : <X className="mx-auto h-4 w-4 text-muted-foreground" />}
                   </TableCell>
@@ -306,7 +334,7 @@ export function ServidoresList({ servidores, onAdd, onUpdate, onDelete }: Servid
 
             {servidores.length === 0 && !showAdd && (
               <TableRow>
-                <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
                   Nenhum servidor cadastrado.
                 </TableCell>
               </TableRow>

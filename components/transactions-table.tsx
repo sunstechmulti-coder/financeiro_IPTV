@@ -64,14 +64,19 @@ export function TransactionsTable({
   const [search, setSearch] = useState('')
   const [deleteId, setDeleteId] = useState<string | null>(null)
 
+  const transactionsWithIndex = transactions.map((transaction, index) => ({
+    transaction,
+    index,
+  }))
+
   // Get unique months from transactions
   const months = Array.from(
     new Set(transactions.map((t) => t.date.substring(0, 7)))
   ).sort((a, b) => b.localeCompare(a))
 
   // Filter and sort transactions
-  const filteredTransactions = transactions
-    .filter((t) => {
+  const filteredTransactions = transactionsWithIndex
+    .filter(({ transaction: t }) => {
       if (filterType !== 'all' && t.type !== filterType) return false
       if (filterMonth !== 'all' && !t.date.startsWith(filterMonth)) return false
       if (search && !t.description.toLowerCase().includes(search.toLowerCase()))
@@ -79,19 +84,34 @@ export function TransactionsTable({
       return true
     })
     .sort((a, b) => {
-      const dateA = new Date(a.date).getTime()
-      const dateB = new Date(b.date).getTime()
-      return sortDirection === 'asc' ? dateA - dateB : dateB - dateA
+      const dateA = new Date(a.transaction.date + 'T00:00:00').getTime()
+      const dateB = new Date(b.transaction.date + 'T00:00:00').getTime()
+
+      if (dateA !== dateB) {
+        return sortDirection === 'asc' ? dateA - dateB : dateB - dateA
+      }
+
+      return sortDirection === 'asc' ? b.index - a.index : a.index - b.index
     })
+    .map(({ transaction }) => transaction)
 
   // Calculate running balance
   const balances = new Map<string, number>()
   let runningBalance = 0
 
   // Calculate cumulative balance including previous transactions
-  const allSortedTransactions = [...transactions].sort(
-    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-  )
+  const allSortedTransactions = [...transactionsWithIndex]
+    .sort((a, b) => {
+      const dateA = new Date(a.transaction.date + 'T00:00:00').getTime()
+      const dateB = new Date(b.transaction.date + 'T00:00:00').getTime()
+
+      if (dateA !== dateB) {
+        return dateA - dateB
+      }
+
+      return b.index - a.index
+    })
+    .map(({ transaction }) => transaction)
 
   allSortedTransactions.forEach((t) => {
     if (t.type === 'income') {

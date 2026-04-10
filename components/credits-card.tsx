@@ -35,7 +35,7 @@ export function CreditsCard({ servidores, movements }: CreditsCardProps) {
 
     const phone = digits.startsWith('55') ? digits : `55${digits}`
     const message = encodeURIComponent(
-      `Olá! Preciso de recarga de ${rechargeQuantity} créditos para o servidor ${servidor.nome}. Pode me confirmar o valor para pagamento, por favor?
+      `Olá! Preciso de uma recarga de ${rechargeQuantity} créditos para o servidor ${servidor.nome}. Pode me confirmar o valor para pagamento, por favor?
 Pelo custo cadastrado, o valor estimado é de R$ ${(servidor.custoUnitario * rechargeQuantity).toFixed(2)}. Confere esse valor?`
     )
 

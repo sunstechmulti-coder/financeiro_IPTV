@@ -724,6 +724,7 @@ function mapServidorFromDB(data: any): Servidor {
     permiteVendaFracionada: data.permite_venda_fracionada,
     supplierWhatsapp: data.supplier_whatsapp ?? undefined,
     riskCredits: data.risk_credits ?? 10,
+    rechargeQuantity: data.recharge_quantity ?? 10,
   }
 }
 

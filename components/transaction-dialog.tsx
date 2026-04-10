@@ -172,6 +172,8 @@ export function TransactionDialog({
 
     const raw = servidor as unknown as Record<string, unknown>
     const value =
+      raw.rechargeQuantity ??
+      raw.recharge_quantity ??
       raw.qtdRecarga ??
       raw.qtd_recarga ??
       raw.quantidadeRecarga ??

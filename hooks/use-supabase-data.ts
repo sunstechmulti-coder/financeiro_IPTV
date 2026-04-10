@@ -239,6 +239,8 @@ export function useSupabaseData() {
         custo_unitario: servidor.custoUnitario,
         credits_balance: servidor.creditsBalance || 0,
         permite_venda_fracionada: servidor.permiteVendaFracionada || false,
+        supplier_whatsapp: servidor.supplierWhatsapp?.trim() || null,
+        risk_credits: servidor.riskCredits ?? 10,
       })
       .select()
       .single()
@@ -260,6 +262,8 @@ export function useSupabaseData() {
         custo_unitario: servidor.custoUnitario,
         credits_balance: servidor.creditsBalance,
         permite_venda_fracionada: servidor.permiteVendaFracionada || false,
+        supplier_whatsapp: servidor.supplierWhatsapp?.trim() || null,
+        risk_credits: servidor.riskCredits ?? 10,
       })
       .eq('id', servidor.id)
       .select()
@@ -716,6 +720,8 @@ function mapServidorFromDB(data: any): Servidor {
     custoUnitario: data.custo_unitario,
     creditsBalance: data.credits_balance,
     permiteVendaFracionada: data.permite_venda_fracionada,
+    supplierWhatsapp: data.supplier_whatsapp ?? undefined,
+    riskCredits: data.risk_credits ?? 10,
   }
 }
 

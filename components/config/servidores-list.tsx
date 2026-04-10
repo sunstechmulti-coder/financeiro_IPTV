@@ -36,7 +36,9 @@ interface ServidoresListProps {
 
 const EMPTY: Omit<Servidor, 'id'> = {
   nome: '',
+  supplierWhatsapp: '',
   custoUnitario: 0,
+  riskCredits: 10,
   creditsBalance: 0,
   permiteVendaFracionada: false,
 }
@@ -52,7 +54,9 @@ export function ServidoresList({ servidores, onAdd, onUpdate, onDelete }: Servid
     setEditingId(s.id)
     setEditForm({
       nome: s.nome,
+      supplierWhatsapp: s.supplierWhatsapp ?? '',
       custoUnitario: s.custoUnitario,
+      riskCredits: s.riskCredits ?? 10,
       creditsBalance: s.creditsBalance ?? 0,
       permiteVendaFracionada: s.permiteVendaFracionada ?? false,
     })
@@ -103,14 +107,15 @@ export function ServidoresList({ servidores, onAdd, onUpdate, onDelete }: Servid
           <TableHeader>
             <TableRow>
               <TableHead>Nome</TableHead>
+              <TableHead>WhatsApp Fornecedor</TableHead>
               <TableHead>Custo Unitário</TableHead>
+              <TableHead>Margem de Risco</TableHead>
               <TableHead className="text-center">Fracionado</TableHead>
               <TableHead className="text-right">Créditos Disponíveis</TableHead>
               <TableHead className="w-24 text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {/* ── Linha de adição ── */}
             {showAdd && (
               <TableRow>
                 <TableCell>
@@ -125,11 +130,32 @@ export function ServidoresList({ servidores, onAdd, onUpdate, onDelete }: Servid
                 </TableCell>
                 <TableCell>
                   <Input
+                    placeholder="WhatsApp do fornecedor"
+                    value={addForm.supplierWhatsapp ?? ''}
+                    onChange={(e) => setAddForm({ ...addForm, supplierWhatsapp: e.target.value })}
+                    className="h-8"
+                    disabled={loading}
+                  />
+                </TableCell>
+                <TableCell>
+                  <Input
                     type="number"
                     step="0.01"
                     placeholder="0,00"
                     value={addForm.custoUnitario || ''}
                     onChange={(e) => setAddForm({ ...addForm, custoUnitario: parseFloat(e.target.value) || 0 })}
+                    className="h-8 w-24"
+                    disabled={loading}
+                  />
+                </TableCell>
+                <TableCell>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.5"
+                    placeholder="10"
+                    value={addForm.riskCredits ?? 10}
+                    onChange={(e) => setAddForm({ ...addForm, riskCredits: parseFloat(e.target.value) || 0 })}
                     className="h-8 w-24"
                     disabled={loading}
                   />
@@ -147,7 +173,16 @@ export function ServidoresList({ servidores, onAdd, onUpdate, onDelete }: Servid
                     <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleAdd} disabled={loading}>
                       <Check className="h-4 w-4 text-green-500" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setShowAdd(false); setAddForm(EMPTY) }} disabled={loading}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => {
+                        setShowAdd(false)
+                        setAddForm(EMPTY)
+                      }}
+                      disabled={loading}
+                    >
                       <X className="h-4 w-4 text-red-500" />
                     </Button>
                   </div>
@@ -155,7 +190,6 @@ export function ServidoresList({ servidores, onAdd, onUpdate, onDelete }: Servid
               </TableRow>
             )}
 
-            {/* ── Linhas existentes ── */}
             {servidores.map((s) =>
               editingId === s.id ? (
                 <TableRow key={s.id}>
@@ -170,11 +204,32 @@ export function ServidoresList({ servidores, onAdd, onUpdate, onDelete }: Servid
                   </TableCell>
                   <TableCell>
                     <Input
+                      value={editForm.supplierWhatsapp ?? ''}
+                      onChange={(e) => setEditForm({ ...editForm, supplierWhatsapp: e.target.value })}
+                      className="h-8"
+                      placeholder="WhatsApp do fornecedor"
+                      disabled={loading}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Input
                       type="number"
                       step="0.01"
                       value={editForm.custoUnitario || ''}
                       onChange={(e) => setEditForm({ ...editForm, custoUnitario: parseFloat(e.target.value) || 0 })}
                       className="h-8 w-24"
+                      disabled={loading}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.5"
+                      value={editForm.riskCredits ?? 10}
+                      onChange={(e) => setEditForm({ ...editForm, riskCredits: parseFloat(e.target.value) || 0 })}
+                      className="h-8 w-24"
+                      placeholder="10"
                       disabled={loading}
                     />
                   </TableCell>
@@ -210,7 +265,9 @@ export function ServidoresList({ servidores, onAdd, onUpdate, onDelete }: Servid
               ) : (
                 <TableRow key={s.id}>
                   <TableCell className="font-medium">{s.nome}</TableCell>
+                  <TableCell>{s.supplierWhatsapp || '-'}</TableCell>
                   <TableCell>{formatCurrency(s.custoUnitario)}</TableCell>
+                  <TableCell>{s.riskCredits ?? 10}</TableCell>
                   <TableCell className="text-center">
                     {s.permiteVendaFracionada ? <Check className="mx-auto h-4 w-4 text-green-500" /> : <X className="mx-auto h-4 w-4 text-muted-foreground" />}
                   </TableCell>
@@ -249,7 +306,7 @@ export function ServidoresList({ servidores, onAdd, onUpdate, onDelete }: Servid
 
             {servidores.length === 0 && !showAdd && (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
                   Nenhum servidor cadastrado.
                 </TableCell>
               </TableRow>

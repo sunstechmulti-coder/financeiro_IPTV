@@ -23,6 +23,8 @@ export interface Servidor {
   custoUnitario: number
   creditsBalance: number // estoque de créditos
   permiteVendaFracionada?: boolean // permite quantidades decimais
+  supplierWhatsapp?: string
+  riskCredits?: number
 }
 
 export interface PlanoEntrada {
@@ -100,4 +102,3 @@ export interface RevendaGrupo {
   servidorIds: string[]
   faixas: RevendaFaixa[]
 }
-

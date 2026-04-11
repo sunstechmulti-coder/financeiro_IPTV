@@ -35,6 +35,8 @@ export interface PlanoEntrada {
   servidorId: string
   tipo: 'renovacao' | 'novo'
   meses: number
+  validadeTipo: 'dias' | 'meses'
+  validadeQuantidade: number
   creditos: number
   valorVenda: number
   custo: number

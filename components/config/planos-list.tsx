@@ -63,11 +63,57 @@ const EMPTY_FORM = {
 
 type DialogMode = 'create' | 'edit' | 'duplicate'
 
+function parseLocalizedNumber(value: string) {
+  const normalized = value
+    .replace(/\s+/g, '')
+    .replace(',', '.')
+    .replace(/[^0-9.-]/g, '')
+
+  if (!normalized || normalized === '.' || normalized === '-' || normalized === '-.') {
+    return 0
+  }
+
+  const firstDotIndex = normalized.indexOf('.')
+  const safe =
+    firstDotIndex === -1
+      ? normalized
+      : normalized.slice(0, firstDotIndex + 1) +
+      normalized.slice(firstDotIndex + 1).replace(/\./g, '')
+
+  const parsed = Number(safe)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function sanitizeNumericInput(value: string, allowDecimal: boolean) {
+  let sanitized = value.replace(/\./g, ',').replace(/[^\d,-]/g, '')
+
+  if (!allowDecimal) {
+    return sanitized.replace(/[,-]/g, '')
+  }
+
+  const negative = sanitized.startsWith('-') ? '-' : ''
+  sanitized = sanitized.replace(/-/g, '')
+
+  const parts = sanitized.split(',')
+  const integerPart = parts[0] ?? ''
+  const decimalPart = parts.slice(1).join('')
+
+  return negative + integerPart + (parts.length > 1 ? `,${decimalPart}` : '')
+}
+
+function formatInputValue(value: number, emptyWhenZero = false) {
+  if (!Number.isFinite(value)) return ''
+  if (emptyWhenZero && value === 0) return ''
+  return String(value).replace('.', ',')
+}
+
 export function PlanosList({ planos, servidores, onAdd, onUpdate, onDelete }: PlanosListProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingPlano, setEditingPlano] = useState<PlanoEntrada | null>(null)
   const [dialogMode, setDialogMode] = useState<DialogMode>('create')
   const [form, setForm] = useState(EMPTY_FORM)
+  const [creditosInput, setCreditosInput] = useState(formatInputValue(EMPTY_FORM.creditos))
+  const [valorVendaInput, setValorVendaInput] = useState(formatInputValue(EMPTY_FORM.valorVenda, true))
   const [filtroServidor, setFiltroServidor] = useState<string>('all')
   const [loading, setLoading] = useState(false)
 
@@ -90,6 +136,21 @@ export function PlanosList({ planos, servidores, onAdd, onUpdate, onDelete }: Pl
     return Number.isFinite(numericValue) ? numericValue : 0
   }
 
+  const getServidorPermiteFracionado = (servidorId: string) => {
+    const servidor = servidores.find(s => s.id === servidorId)
+    if (!servidor) return false
+
+    const raw = servidor as unknown as Record<string, unknown>
+
+    return Boolean(
+      raw.permiteVendaFracionada ??
+      raw.permite_venda_fracionada ??
+      raw.allowFractionalCredits ??
+      raw.allow_fractional_credits ??
+      false
+    )
+  }
+
   const getPlanoCustoAtual = (plano: PlanoEntrada) => {
     return Number((getServidorUnitCost(plano.servidorId) * Number(plano.creditos || 0)).toFixed(2))
   }
@@ -99,6 +160,7 @@ export function PlanosList({ planos, servidores, onAdd, onUpdate, onDelete }: Pl
   }
 
   const lucroCalculado = Number(form.valorVenda || 0) - Number(form.custo || 0)
+  const permiteCreditoFracionado = getServidorPermiteFracionado(form.servidorId)
 
   const codigoEmUso = useMemo(() => {
     const codigo = form.codigo.trim().toLowerCase()
@@ -118,28 +180,36 @@ export function PlanosList({ planos, servidores, onAdd, onUpdate, onDelete }: Pl
   }, [form.codigo, planos, dialogMode, editingPlano])
 
   useEffect(() => {
-    if (!form.servidorId) {
-      setForm(prev => {
-        if (prev.custo === 0) return prev
-        return { ...prev, custo: 0 }
-      })
-      return
-    }
-
-    const unitCost = getServidorUnitCost(form.servidorId)
-    const creditos = Number(form.creditos || 0)
-    const novoCusto = Number((unitCost * creditos).toFixed(2))
-
     setForm(prev => {
-      if (prev.custo === novoCusto) return prev
-      return { ...prev, custo: novoCusto }
+      const creditosNormalizados = permiteCreditoFracionado
+        ? Number(prev.creditos || 0)
+        : Math.trunc(Number(prev.creditos || 0))
+
+      const unitCost = prev.servidorId ? getServidorUnitCost(prev.servidorId) : 0
+      const novoCusto = Number((unitCost * creditosNormalizados).toFixed(2))
+
+      const precisaAtualizarCreditos = prev.creditos !== creditosNormalizados
+      const precisaAtualizarCusto = prev.custo !== novoCusto
+
+      if (!precisaAtualizarCreditos && !precisaAtualizarCusto) return prev
+
+      return {
+        ...prev,
+        creditos: creditosNormalizados,
+        custo: novoCusto,
+      }
     })
-  }, [form.servidorId, form.creditos, servidores])
+  }, [form.servidorId, form.creditos, servidores, permiteCreditoFracionado])
+
+  useEffect(() => {
+    setCreditosInput(formatInputValue(form.creditos))
+  }, [form.creditos])
 
   const handleOpen = (plano?: PlanoEntrada, mode: DialogMode = 'create') => {
     setDialogMode(mode)
 
     if (plano && mode === 'edit') {
+      const custo = Number((getServidorUnitCost(plano.servidorId) * Number(plano.creditos || 0)).toFixed(2))
       setEditingPlano(plano)
       setForm({
         codigo: plano.codigo,
@@ -149,9 +219,12 @@ export function PlanosList({ planos, servidores, onAdd, onUpdate, onDelete }: Pl
         meses: plano.meses,
         creditos: plano.creditos,
         valorVenda: plano.valorVenda,
-        custo: Number((getServidorUnitCost(plano.servidorId) * Number(plano.creditos || 0)).toFixed(2)),
+        custo,
       })
+      setCreditosInput(formatInputValue(plano.creditos))
+      setValorVendaInput(formatInputValue(plano.valorVenda, true))
     } else if (plano && mode === 'duplicate') {
+      const custo = Number((getServidorUnitCost(plano.servidorId) * Number(plano.creditos || 0)).toFixed(2))
       setEditingPlano(null)
       setForm({
         codigo: '',
@@ -161,11 +234,15 @@ export function PlanosList({ planos, servidores, onAdd, onUpdate, onDelete }: Pl
         meses: plano.meses,
         creditos: plano.creditos,
         valorVenda: plano.valorVenda,
-        custo: Number((getServidorUnitCost(plano.servidorId) * Number(plano.creditos || 0)).toFixed(2)),
+        custo,
       })
+      setCreditosInput(formatInputValue(plano.creditos))
+      setValorVendaInput(formatInputValue(plano.valorVenda, true))
     } else {
       setEditingPlano(null)
       setForm(EMPTY_FORM)
+      setCreditosInput(formatInputValue(EMPTY_FORM.creditos))
+      setValorVendaInput(formatInputValue(EMPTY_FORM.valorVenda, true))
     }
 
     setDialogOpen(true)
@@ -174,13 +251,21 @@ export function PlanosList({ planos, servidores, onAdd, onUpdate, onDelete }: Pl
   const handleSave = async () => {
     if (!form.codigo.trim() || !form.servidorId || codigoEmUso) return
 
+    const creditosNormalizados = permiteCreditoFracionado
+      ? Number(form.creditos || 0)
+      : Math.trunc(Number(form.creditos || 0))
+
+    if (creditosNormalizados <= 0) return
+
     setLoading(true)
 
     const payload = {
       ...form,
       codigo: form.codigo.trim(),
       descricao: form.descricao.trim(),
-      custo: Number((getServidorUnitCost(form.servidorId) * Number(form.creditos || 0)).toFixed(2)),
+      creditos: creditosNormalizados,
+      valorVenda: Number(form.valorVenda || 0),
+      custo: Number((getServidorUnitCost(form.servidorId) * creditosNormalizados).toFixed(2)),
     }
 
     if (dialogMode === 'edit' && editingPlano) {
@@ -435,11 +520,20 @@ export function PlanosList({ planos, servidores, onAdd, onUpdate, onDelete }: Pl
               <div className="space-y-2">
                 <Label>Créditos</Label>
                 <Input
-                  type="number"
-                  min={0.1}
-                  step="0.1"
-                  value={form.creditos}
-                  onChange={e => setForm({ ...form, creditos: parseFloat(e.target.value) || 0 })}
+                  type="text"
+                  inputMode={permiteCreditoFracionado ? 'decimal' : 'numeric'}
+                  value={creditosInput}
+                  onChange={e => {
+                    const sanitized = sanitizeNumericInput(e.target.value, permiteCreditoFracionado)
+                    const parsed = parseLocalizedNumber(sanitized)
+
+                    setCreditosInput(sanitized)
+                    setForm({
+                      ...form,
+                      creditos: permiteCreditoFracionado ? parsed : Math.trunc(parsed),
+                    })
+                  }}
+                  placeholder={permiteCreditoFracionado ? 'Ex: 0,5' : 'Ex: 1'}
                   disabled={loading}
                 />
               </div>
@@ -449,10 +543,14 @@ export function PlanosList({ planos, servidores, onAdd, onUpdate, onDelete }: Pl
               <div className="space-y-2">
                 <Label>Valor de Venda</Label>
                 <Input
-                  type="number"
-                  step="0.01"
-                  value={form.valorVenda || ''}
-                  onChange={e => setForm({ ...form, valorVenda: parseFloat(e.target.value) || 0 })}
+                  type="text"
+                  inputMode="decimal"
+                  value={valorVendaInput}
+                  onChange={e => {
+                    const sanitized = sanitizeNumericInput(e.target.value, true)
+                    setValorVendaInput(sanitized)
+                    setForm({ ...form, valorVenda: parseLocalizedNumber(sanitized) })
+                  }}
                   disabled={loading}
                 />
               </div>

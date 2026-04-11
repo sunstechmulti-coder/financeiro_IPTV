@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import {
   ArrowUpDown,
-  MoreHorizontal,
   Pencil,
   Trash2,
   Search,
@@ -11,12 +10,6 @@ import {
   Download,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -219,7 +212,7 @@ export function TransactionsTable({
               <TableHead>Descrição</TableHead>
               <TableHead className="text-right">Valor</TableHead>
               <TableHead className="text-right">Saldo</TableHead>
-              <TableHead className="w-[50px]"></TableHead>
+              <TableHead className="w-[90px] text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -284,27 +277,25 @@ export function TransactionsTable({
                     {formatCurrency(balances.get(transaction.id) || 0)}
                   </TableCell>
                   <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon-sm">
-                          <MoreHorizontal className="h-4 w-4" />
-                          <span className="sr-only">Abrir menu</span>
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => onEdit(transaction)}>
-                          <Pencil className="mr-2 h-4 w-4" />
-                          Editar
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="text-destructive focus:text-destructive"
-                          onClick={() => setDeleteId(transaction.id)}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Excluir
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => onEdit(transaction)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                        <span className="sr-only">Editar</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => setDeleteId(transaction.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        <span className="sr-only">Excluir</span>
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))

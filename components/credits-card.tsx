@@ -33,8 +33,7 @@ export function CreditsCard({ servidores, movements }: CreditsCardProps) {
       ?? servidor.riskCredits
       ?? 10
 
-    const digits = (servidor.supplierWhatsapp || '').replace(/\D/g, '')
-    const phone = digits.startsWith('00') ? digits.slice(2) : digits
+    const phone = digits.startsWith('55') ? digits : `55${digits}`
     const message = encodeURIComponent(
       `Olá! Preciso de uma recarga de ${rechargeQuantity} créditos para o servidor ${servidor.nome}. Pode me confirmar o valor para pagamento, por favor?
       

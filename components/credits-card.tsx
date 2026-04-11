@@ -33,7 +33,14 @@ export function CreditsCard({ servidores, movements }: CreditsCardProps) {
       ?? servidor.riskCredits
       ?? 10
 
-    const phone = digits.startsWith('55') ? digits : `55${digits}`
+    let phone = digits
+
+    if (phone.startsWith('00')) {
+      phone = phone.slice(2)
+    } else if (phone.length <= 11) {
+      phone = `55${phone}`
+    }
+
     const message = encodeURIComponent(
       `Olá! Preciso de uma recarga de ${rechargeQuantity} créditos para o servidor ${servidor.nome}. Pode me confirmar o valor para pagamento, por favor?
       

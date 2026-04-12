@@ -24,6 +24,7 @@ export interface Servidor {
   creditsBalance: number // estoque de créditos
   permiteVendaFracionada?: boolean // permite quantidades decimais
   supplierWhatsapp?: string
+  panelUsername?: string
   riskCredits?: number
   rechargeQuantity?: number
 }

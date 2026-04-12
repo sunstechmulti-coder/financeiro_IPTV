@@ -37,6 +37,7 @@ interface ServidoresListProps {
 const EMPTY: Omit<Servidor, 'id'> = {
   nome: '',
   supplierWhatsapp: '',
+  panelUsername: '',
   custoUnitario: 0,
   riskCredits: 10,
   rechargeQuantity: 10,
@@ -56,6 +57,7 @@ export function ServidoresList({ servidores, onAdd, onUpdate, onDelete }: Servid
     setEditForm({
       nome: s.nome,
       supplierWhatsapp: s.supplierWhatsapp ?? '',
+      panelUsername: s.panelUsername ?? '',
       custoUnitario: s.custoUnitario,
       riskCredits: s.riskCredits ?? 10,
       rechargeQuantity: s.rechargeQuantity ?? 10,
@@ -110,6 +112,7 @@ export function ServidoresList({ servidores, onAdd, onUpdate, onDelete }: Servid
             <TableRow>
               <TableHead>Nome</TableHead>
               <TableHead>WhatsApp Fornecedor</TableHead>
+              <TableHead>Usuário do Painel</TableHead>
               <TableHead>Custo Unitário</TableHead>
               <TableHead>Margem de Risco</TableHead>
               <TableHead>Qtd. Recarga</TableHead>
@@ -136,6 +139,15 @@ export function ServidoresList({ servidores, onAdd, onUpdate, onDelete }: Servid
                     placeholder="WhatsApp do fornecedor"
                     value={addForm.supplierWhatsapp ?? ''}
                     onChange={(e) => setAddForm({ ...addForm, supplierWhatsapp: e.target.value })}
+                    className="h-8"
+                    disabled={loading}
+                  />
+                </TableCell>
+                <TableCell>
+                  <Input
+                    placeholder="Usuário do painel"
+                    value={addForm.panelUsername ?? ''}
+                    onChange={(e) => setAddForm({ ...addForm, panelUsername: e.target.value })}
                     className="h-8"
                     disabled={loading}
                   />
@@ -228,6 +240,15 @@ export function ServidoresList({ servidores, onAdd, onUpdate, onDelete }: Servid
                   </TableCell>
                   <TableCell>
                     <Input
+                      value={editForm.panelUsername ?? ''}
+                      onChange={(e) => setEditForm({ ...editForm, panelUsername: e.target.value })}
+                      className="h-8"
+                      placeholder="Usuário do painel"
+                      disabled={loading}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Input
                       type="number"
                       step="0.01"
                       value={editForm.custoUnitario || ''}
@@ -293,6 +314,7 @@ export function ServidoresList({ servidores, onAdd, onUpdate, onDelete }: Servid
                 <TableRow key={s.id}>
                   <TableCell className="font-medium">{s.nome}</TableCell>
                   <TableCell>{s.supplierWhatsapp || '-'}</TableCell>
+                  <TableCell>{s.panelUsername || '-'}</TableCell>
                   <TableCell>{formatCurrency(s.custoUnitario)}</TableCell>
                   <TableCell>{s.riskCredits ?? 10}</TableCell>
                   <TableCell>{s.rechargeQuantity ?? 10}</TableCell>
@@ -334,7 +356,7 @@ export function ServidoresList({ servidores, onAdd, onUpdate, onDelete }: Servid
 
             {servidores.length === 0 && !showAdd && (
               <TableRow>
-                <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
+                <TableCell colSpan={9} className="py-8 text-center text-muted-foreground">
                   Nenhum servidor cadastrado.
                 </TableCell>
               </TableRow>

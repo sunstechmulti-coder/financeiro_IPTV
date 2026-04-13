@@ -124,10 +124,10 @@ Pelo custo cadastrado, o valor estimado é de R$ ${(servidor.custoUnitario * rec
                   {(isZero || isLow) && rechargeUrl && (
                     <Button
                       size="sm"
-                      className="mt-2 h-8 w-full rounded-full bg-green-600 text-white hover:bg-green-700"
+                      className="mt-2 h-auto w-full max-w-full rounded-full bg-green-600 px-3 py-2 text-xs leading-tight whitespace-normal text-white hover:bg-green-700 sm:mt-0 sm:w-auto sm:text-sm"
                       onClick={() => window.open(rechargeUrl, '_blank', 'noopener,noreferrer')}
                     >
-                      <MessageCircle className="mr-1.5 h-3.5 w-3.5" />
+                      <MessageCircle className="mr-1.5 h-3.5 w-3.5 shrink-0" />
                       Solicitar recarga
                     </Button>
                   )}

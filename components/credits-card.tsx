@@ -42,8 +42,8 @@ export function CreditsCard({ servidores, movements }: CreditsCardProps) {
     }
 
     const message = encodeURIComponent(
-      `Olá! Preciso de uma recarga de ${rechargeQuantity} créditos para o servidor ${servidor.nome}.
-Usuário do painel:*${servidor.panelUsername || 'não informado'}*.
+      `Olá! Preciso de uma recarga de *${rechargeQuantity}* créditos para o servidor *${servidor.nome}*.
+Usuário do Painel: *${servidor.panelUsername || 'não informado'}*
 
 Pode me confirmar o valor para pagamento, por favor?
 

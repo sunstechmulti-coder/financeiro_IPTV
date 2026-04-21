@@ -95,6 +95,7 @@ export function TransactionDialog({
   // Ativação
   const [activationProductId, setActivationProductId] = useState('')
   const [activationCusto, setActivationCusto] = useState<number | null>(null)
+  const [activationValorVendaOverride, setActivationValorVendaOverride] = useState('')
   const [registrarCustoAtivacao, setRegistrarCustoAtivacao] = useState(false)
 
   // Revenda de créditos
@@ -225,9 +226,12 @@ export function TransactionDialog({
 
   // Ativação derived
   const selectedActivationProduct = activationProducts.find((p) => p.id === activationProductId) ?? null
-  const activationSalePrice = selectedActivationProduct && activationCusto !== null
+  const activationSalePriceBase = selectedActivationProduct && activationCusto !== null
     ? getSalePrice(selectedActivationProduct, activationCusto)
     : 0
+  const activationSalePrice = activationValorVendaOverride
+    ? (parseFloat(activationValorVendaOverride.replace(',', '.')) || 0)
+    : activationSalePriceBase
 
   // Ativação balance (linked server)
   const activationServidor = selectedActivationProduct?.linkedServerId
@@ -276,6 +280,7 @@ export function TransactionDialog({
       setValorManualSaida('')
       setActivationProductId('')
       setActivationCusto(null)
+      setActivationValorVendaOverride('')
       setRegistrarCustoAtivacao(false)
       setRevendaServidorId('')
       setRevendaQtd('')
@@ -295,7 +300,17 @@ export function TransactionDialog({
 
   useEffect(() => {
     setActivationCusto(null)
+    setActivationValorVendaOverride('')
   }, [activationProductId])
+
+  useEffect(() => {
+    if (selectedActivationProduct && activationCusto !== null) {
+      const suggestedPrice = getSalePrice(selectedActivationProduct, activationCusto)
+      setActivationValorVendaOverride(suggestedPrice.toFixed(2).replace('.', ','))
+    } else {
+      setActivationValorVendaOverride('')
+    }
+  }, [selectedActivationProduct, activationCusto])
 
   useEffect(() => {
     setRevendaQtd('')
@@ -964,6 +979,28 @@ export function TransactionDialog({
                       <p className="text-xs text-muted-foreground">
                         Selecione o custo — o preço de venda é calculado automaticamente pela faixa.
                       </p>
+                    </div>
+                  )}
+
+                  {selectedActivationProduct && activationCusto !== null && (
+                    <div className="grid gap-2">
+                      <Label>Valor de venda (R$)</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
+                          R$
+                        </span>
+                        <Input
+                          className="pl-9"
+                          value={activationValorVendaOverride}
+                          onChange={(e) => setActivationValorVendaOverride(e.target.value.replace(/[^\d,\.]/g, ''))}
+                          data-testid="activation-sale-price-override"
+                        />
+                      </div>
+                      {activationSalePrice !== activationSalePriceBase && activationSalePriceBase > 0 && (
+                        <p className="text-xs text-amber-500">
+                          Valor original da faixa: {formatCurrency(activationSalePriceBase)}
+                        </p>
+                      )}
                     </div>
                   )}
 

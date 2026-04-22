@@ -202,116 +202,215 @@ export function TransactionsTable({
         </div>
       </div>
 
-      <div className="rounded-lg border bg-card">
-        <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="-ml-3 h-8 hover:bg-transparent"
-                  onClick={toggleSort}
-                >
-                  Data
-                  <ArrowUpDown className="ml-2 h-4 w-4" />
-                </Button>
-              </TableHead>
-              <TableHead>Tipo</TableHead>
-              <TableHead>Descrição</TableHead>
-              <TableHead className="text-right">Valor</TableHead>
-              <TableHead className="text-right">Saldo</TableHead>
-              <TableHead className="w-[90px] text-right">Ações</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredTransactions.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                  Nenhuma transação encontrada.
-                </TableCell>
-              </TableRow>
-            ) : (
-              filteredTransactions.map((transaction) => (
-                <TableRow
-                  key={transaction.id}
-                  className={cn(
-                    'transition-colors',
-                    transaction.type === 'income'
-                      ? 'bg-income-muted/10 hover:bg-income-muted/20'
-                      : 'bg-expense-muted/10 hover:bg-expense-muted/20'
-                  )}
-                >
-                  <TableCell className="font-medium">
-                    {formatDate(transaction.date)}
-                  </TableCell>
-                  <TableCell>
-                    <span
-                      className={cn(
-                        'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium',
-                        transaction.type === 'income'
-                          ? 'bg-income/10 text-income'
-                          : 'bg-expense/10 text-expense'
-                      )}
-                    >
+      {filteredTransactions.length === 0 ? (
+        <div className="rounded-lg border bg-card">
+          <div className="h-24 flex items-center justify-center text-center text-muted-foreground">
+            Nenhuma transação encontrada.
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="space-y-3 md:hidden">
+            {filteredTransactions.map((transaction) => (
+              <div
+                key={transaction.id}
+                className={cn(
+                  'rounded-xl border p-4 transition-colors',
+                  transaction.type === 'income'
+                    ? 'border-income-muted/30 bg-income-muted/10'
+                    : 'border-expense-muted/30 bg-expense-muted/10'
+                )}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-semibold">
+                      {transaction.description}
+                    </div>
+
+                    <div className="mt-2">
                       <span
                         className={cn(
-                          'h-1.5 w-1.5 rounded-full',
-                          transaction.type === 'income' ? 'bg-income' : 'bg-expense'
+                          'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium',
+                          transaction.type === 'income'
+                            ? 'bg-income/10 text-income'
+                            : 'bg-expense/10 text-expense'
                         )}
-                      />
-                      {transaction.type === 'income' ? 'Entrada' : 'Saída'}
-                    </span>
-                  </TableCell>
-                  <TableCell className="max-w-[200px] truncate">
-                    {transaction.description}
-                  </TableCell>
-                  <TableCell
-                    className={cn(
-                      'text-right font-medium',
-                      transaction.type === 'income' ? 'text-income' : 'text-expense'
-                    )}
-                  >
-                    {transaction.type === 'income' ? '+' : '-'}
-                    {formatCurrency(transaction.amount)}
-                  </TableCell>
-                  <TableCell
-                    className={cn(
-                      'text-right font-medium',
-                      (balances.get(transaction.id) || 0) >= 0
-                        ? 'text-income'
-                        : 'text-expense'
-                    )}
-                  >
-                    {formatCurrency(balances.get(transaction.id) || 0)}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => onEdit(transaction)}
                       >
-                        <Pencil className="h-4 w-4" />
-                        <span className="sr-only">Editar</span>
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        className="text-destructive hover:text-destructive"
-                        onClick={() => setDeleteId(transaction.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        <span className="sr-only">Excluir</span>
-                      </Button>
+                        <span
+                          className={cn(
+                            'h-1.5 w-1.5 rounded-full',
+                            transaction.type === 'income' ? 'bg-income' : 'bg-expense'
+                          )}
+                        />
+                        {transaction.type === 'income' ? 'Entrada' : 'Saída'}
+                      </span>
                     </div>
-                  </TableCell>
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => onEdit(transaction)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                      <span className="sr-only">Editar</span>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => setDeleteId(transaction.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      <span className="sr-only">Excluir</span>
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
+                  <div>
+                    <div className="text-xs text-muted-foreground">Data</div>
+                    <div className="mt-1 font-medium">
+                      {formatDate(transaction.date)}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-xs text-muted-foreground">Valor</div>
+                    <div
+                      className={cn(
+                        'mt-1 font-semibold',
+                        transaction.type === 'income' ? 'text-income' : 'text-expense'
+                      )}
+                    >
+                      {transaction.type === 'income' ? '+' : '-'}
+                      {formatCurrency(transaction.amount)}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-xs text-muted-foreground">Saldo</div>
+                    <div
+                      className={cn(
+                        'mt-1 font-semibold',
+                        (balances.get(transaction.id) || 0) >= 0
+                          ? 'text-income'
+                          : 'text-expense'
+                      )}
+                    >
+                      {formatCurrency(balances.get(transaction.id) || 0)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="hidden rounded-lg border bg-card md:block">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-8 hover:bg-transparent"
+                      onClick={toggleSort}
+                    >
+                      Data
+                      <ArrowUpDown className="ml-2 h-4 w-4" />
+                    </Button>
+                  </TableHead>
+                  <TableHead>Tipo</TableHead>
+                  <TableHead>Descrição</TableHead>
+                  <TableHead className="text-right">Valor</TableHead>
+                  <TableHead className="text-right">Saldo</TableHead>
+                  <TableHead className="w-[90px] text-right">Ações</TableHead>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+              </TableHeader>
+              <TableBody>
+                {filteredTransactions.map((transaction) => (
+                  <TableRow
+                    key={transaction.id}
+                    className={cn(
+                      'transition-colors',
+                      transaction.type === 'income'
+                        ? 'bg-income-muted/10 hover:bg-income-muted/20'
+                        : 'bg-expense-muted/10 hover:bg-expense-muted/20'
+                    )}
+                  >
+                    <TableCell className="font-medium">
+                      {formatDate(transaction.date)}
+                    </TableCell>
+                    <TableCell>
+                      <span
+                        className={cn(
+                          'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium',
+                          transaction.type === 'income'
+                            ? 'bg-income/10 text-income'
+                            : 'bg-expense/10 text-expense'
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            'h-1.5 w-1.5 rounded-full',
+                            transaction.type === 'income' ? 'bg-income' : 'bg-expense'
+                          )}
+                        />
+                        {transaction.type === 'income' ? 'Entrada' : 'Saída'}
+                      </span>
+                    </TableCell>
+                    <TableCell className="max-w-[200px] truncate">
+                      {transaction.description}
+                    </TableCell>
+                    <TableCell
+                      className={cn(
+                        'text-right font-medium',
+                        transaction.type === 'income' ? 'text-income' : 'text-expense'
+                      )}
+                    >
+                      {transaction.type === 'income' ? '+' : '-'}
+                      {formatCurrency(transaction.amount)}
+                    </TableCell>
+                    <TableCell
+                      className={cn(
+                        'text-right font-medium',
+                        (balances.get(transaction.id) || 0) >= 0
+                          ? 'text-income'
+                          : 'text-expense'
+                      )}
+                    >
+                      {formatCurrency(balances.get(transaction.id) || 0)}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => onEdit(transaction)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                          <span className="sr-only">Editar</span>
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => setDeleteId(transaction.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          <span className="sr-only">Excluir</span>
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </>
+      )}
 
       <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
         <AlertDialogContent>

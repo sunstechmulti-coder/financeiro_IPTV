@@ -9,6 +9,7 @@ import { AtivacoesList } from '@/components/config/ativacoes-list'
 import { RevendaConfig } from '@/components/config/revenda-config'
 import { ChangePassword } from '@/components/config/change-password'
 import { AdminUsersPanel } from '@/components/config/admin-users-panel'
+import { cn } from '@/lib/utils'
 import type { Servidor, PlanoEntrada, SaidaRapida, ActivationProduct, RevendaGrupo } from '@/lib/types'
 
 interface ConfigPageProps {
@@ -73,44 +74,74 @@ export function ConfigPage({
       </div>
 
       <Tabs defaultValue="servidores">
-        <div className="w-full overflow-x-auto pb-1">
-          <TabsList className={`inline-flex w-max md:grid md:w-full md:max-w-3xl ${isAdmin ? 'md:grid-cols-7' : 'md:grid-cols-6'}`}>
-            <TabsTrigger value="servidores" className="gap-1.5 whitespace-nowrap">
-              <Server className="h-4 w-4 shrink-0" />
-              <span>Servidores</span>
+        <TabsList
+          className={cn(
+            'grid h-auto w-full gap-2 bg-transparent p-0',
+            isAdmin ? 'grid-cols-2 sm:grid-cols-3 xl:grid-cols-7' : 'grid-cols-2 sm:grid-cols-3 xl:grid-cols-6'
+          )}
+        >
+          <TabsTrigger
+            value="servidores"
+            className="h-auto min-h-10 justify-start gap-1.5 rounded-lg border border-border px-3 py-2 text-xs whitespace-nowrap text-muted-foreground transition-colors sm:text-sm xl:justify-center data-[state=active]:border-primary/60 data-[state=active]:bg-primary/15 data-[state=active]:text-primary data-[state=active]:shadow-sm"
+          >
+            <Server className="h-4 w-4 shrink-0" />
+            <span>Servidores</span>
+          </TabsTrigger>
+
+          <TabsTrigger
+            value="planos"
+            className="h-auto min-h-10 justify-start gap-1.5 rounded-lg border border-border px-3 py-2 text-xs whitespace-nowrap text-muted-foreground transition-colors sm:text-sm xl:justify-center data-[state=active]:border-primary/60 data-[state=active]:bg-primary/15 data-[state=active]:text-primary data-[state=active]:shadow-sm"
+          >
+            <LayoutList className="h-4 w-4 shrink-0" />
+            <span>Planos</span>
+          </TabsTrigger>
+
+          <TabsTrigger
+            value="saidas"
+            className="h-auto min-h-10 justify-start gap-1.5 rounded-lg border border-border px-3 py-2 text-xs whitespace-nowrap text-muted-foreground transition-colors sm:text-sm xl:justify-center data-[state=active]:border-primary/60 data-[state=active]:bg-primary/15 data-[state=active]:text-primary data-[state=active]:shadow-sm"
+          >
+            <ArrowDownCircle className="h-4 w-4 shrink-0" />
+            <span>Saídas</span>
+          </TabsTrigger>
+
+          <TabsTrigger
+            value="ativacoes"
+            className="h-auto min-h-10 justify-start gap-1.5 rounded-lg border border-border px-3 py-2 text-xs whitespace-nowrap text-muted-foreground transition-colors sm:text-sm xl:justify-center data-[state=active]:border-primary/60 data-[state=active]:bg-primary/15 data-[state=active]:text-primary data-[state=active]:shadow-sm"
+          >
+            <Zap className="h-4 w-4 shrink-0" />
+            <span>Ativações</span>
+          </TabsTrigger>
+
+          <TabsTrigger
+            value="revenda"
+            className="h-auto min-h-10 justify-start gap-1.5 rounded-lg border border-border px-3 py-2 text-xs whitespace-nowrap text-muted-foreground transition-colors sm:text-sm xl:justify-center data-[state=active]:border-primary/60 data-[state=active]:bg-primary/15 data-[state=active]:text-primary data-[state=active]:shadow-sm"
+          >
+            <DollarSign className="h-4 w-4 shrink-0" />
+            <span>Revenda</span>
+          </TabsTrigger>
+
+          <TabsTrigger
+            value="conta"
+            className="h-auto min-h-10 justify-start gap-1.5 rounded-lg border border-border px-3 py-2 text-xs whitespace-nowrap text-muted-foreground transition-colors sm:text-sm xl:justify-center data-[state=active]:border-primary/60 data-[state=active]:bg-primary/15 data-[state=active]:text-primary data-[state=active]:shadow-sm"
+          >
+            <UserCog className="h-4 w-4 shrink-0" />
+            <span>Conta</span>
+          </TabsTrigger>
+
+          {isAdmin && (
+            <TabsTrigger
+              value="usuarios"
+              className="h-auto min-h-10 justify-start gap-1.5 rounded-lg border border-border px-3 py-2 text-xs whitespace-nowrap text-muted-foreground transition-colors sm:text-sm xl:justify-center data-[state=active]:border-primary/60 data-[state=active]:bg-primary/15 data-[state=active]:text-primary data-[state=active]:shadow-sm"
+            >
+              <Users className="h-4 w-4 shrink-0" />
+              <span>Usuários</span>
             </TabsTrigger>
-            <TabsTrigger value="planos" className="gap-1.5 whitespace-nowrap">
-              <LayoutList className="h-4 w-4 shrink-0" />
-              <span>Planos</span>
-            </TabsTrigger>
-            <TabsTrigger value="saidas" className="gap-1.5 whitespace-nowrap">
-              <ArrowDownCircle className="h-4 w-4 shrink-0" />
-              <span>Saídas</span>
-            </TabsTrigger>
-            <TabsTrigger value="ativacoes" className="gap-1.5 whitespace-nowrap">
-              <Zap className="h-4 w-4 shrink-0" />
-              <span>Ativações</span>
-            </TabsTrigger>
-            <TabsTrigger value="revenda" className="gap-1.5 whitespace-nowrap">
-              <DollarSign className="h-4 w-4 shrink-0" />
-              <span>Revenda</span>
-            </TabsTrigger>
-            <TabsTrigger value="conta" className="gap-1.5 whitespace-nowrap">
-              <UserCog className="h-4 w-4 shrink-0" />
-              <span>Conta</span>
-            </TabsTrigger>
-            {isAdmin && (
-              <TabsTrigger value="usuarios" className="gap-1.5 whitespace-nowrap">
-                <Users className="h-4 w-4 shrink-0" />
-                <span>Usuários</span>
-              </TabsTrigger>
-            )}
-          </TabsList>
-        </div>
+          )}
+        </TabsList>
 
         <TabsContent value="servidores" className="mt-6">
-          <ServidoresList 
-            servidores={servidores} 
+          <ServidoresList
+            servidores={servidores}
             onAdd={onAddServidor}
             onUpdate={onUpdateServidor}
             onDelete={onDeleteServidor}
@@ -118,9 +149,9 @@ export function ConfigPage({
         </TabsContent>
 
         <TabsContent value="planos" className="mt-6">
-          <PlanosList 
-            planos={planos} 
-            servidores={servidores} 
+          <PlanosList
+            planos={planos}
+            servidores={servidores}
             onAdd={onAddPlano}
             onUpdate={onUpdatePlano}
             onDelete={onDeletePlano}
@@ -128,9 +159,9 @@ export function ConfigPage({
         </TabsContent>
 
         <TabsContent value="saidas" className="mt-6">
-          <SaidasRapidasList 
-            saidas={saidasRapidas} 
-            servidores={servidores} 
+          <SaidasRapidasList
+            saidas={saidasRapidas}
+            servidores={servidores}
             onAdd={onAddSaidaRapida}
             onUpdate={onUpdateSaidaRapida}
             onDelete={onDeleteSaidaRapida}
@@ -138,9 +169,9 @@ export function ConfigPage({
         </TabsContent>
 
         <TabsContent value="ativacoes" className="mt-6">
-          <AtivacoesList 
-            products={activationProducts} 
-            servidores={servidores} 
+          <AtivacoesList
+            products={activationProducts}
+            servidores={servidores}
             onAdd={onAddActivationProduct}
             onUpdate={onUpdateActivationProduct}
             onDelete={onDeleteActivationProduct}

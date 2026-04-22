@@ -88,34 +88,70 @@ export function ServerProfit({ transactions, servidores, month, year }: ServerPr
         {data.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">Nenhum dado de servidor no período.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-muted-foreground">
-                  <th className="pb-2 text-left font-medium">Servidor</th>
-                  <th className="pb-2 text-right font-medium">Receita</th>
-                  <th className="pb-2 text-right font-medium">Custo créditos</th>
-                  <th className="pb-2 text-right font-medium">Lucro est.</th>
-                  <th className="pb-2 text-right font-medium">Margem %</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {data.map(row => (
-                  <tr key={row.nome}>
-                    <td className="py-2 font-medium">{row.nome}</td>
-                    <td className="py-2 text-right text-income">{formatCurrency(row.revenue)}</td>
-                    <td className="py-2 text-right text-expense">{formatCurrency(row.cost)}</td>
-                    <td className={`py-2 text-right font-semibold ${row.profit >= 0 ? 'text-income' : 'text-expense'}`}>
-                      {formatCurrency(row.profit)}
-                    </td>
-                    <td className={`py-2 text-right text-sm ${row.margin >= 50 ? 'text-income' : row.margin >= 20 ? 'text-yellow-400' : 'text-expense'}`}>
-                      {row.margin.toFixed(1)}%
-                    </td>
+          <>
+            <div className="space-y-3 md:hidden">
+              {data.map(row => (
+                <div key={row.nome} className="rounded-lg border border-border p-3">
+                  <div className="mb-3 text-sm font-semibold">{row.nome}</div>
+
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                    <div>
+                      <div className="text-xs text-muted-foreground">Receita</div>
+                      <div className="text-income">{formatCurrency(row.revenue)}</div>
+                    </div>
+
+                    <div>
+                      <div className="text-xs text-muted-foreground">Custo créditos</div>
+                      <div className="text-expense">{formatCurrency(row.cost)}</div>
+                    </div>
+
+                    <div>
+                      <div className="text-xs text-muted-foreground">Lucro est.</div>
+                      <div className={row.profit >= 0 ? 'font-semibold text-income' : 'font-semibold text-expense'}>
+                        {formatCurrency(row.profit)}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-xs text-muted-foreground">Margem</div>
+                      <div className={row.margin >= 50 ? 'text-income' : row.margin >= 20 ? 'text-yellow-400' : 'text-expense'}>
+                        {row.margin.toFixed(1)}%
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-muted-foreground">
+                    <th className="pb-2 text-left font-medium">Servidor</th>
+                    <th className="pb-2 text-right font-medium">Receita</th>
+                    <th className="pb-2 text-right font-medium">Custo créditos</th>
+                    <th className="pb-2 text-right font-medium">Lucro est.</th>
+                    <th className="pb-2 text-right font-medium">Margem %</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {data.map(row => (
+                    <tr key={row.nome}>
+                      <td className="py-2 font-medium">{row.nome}</td>
+                      <td className="py-2 text-right text-income">{formatCurrency(row.revenue)}</td>
+                      <td className="py-2 text-right text-expense">{formatCurrency(row.cost)}</td>
+                      <td className={`py-2 text-right font-semibold ${row.profit >= 0 ? 'text-income' : 'text-expense'}`}>
+                        {formatCurrency(row.profit)}
+                      </td>
+                      <td className={`py-2 text-right text-sm ${row.margin >= 50 ? 'text-income' : row.margin >= 20 ? 'text-yellow-400' : 'text-expense'}`}>
+                        {row.margin.toFixed(1)}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </CardContent>
     </Card>

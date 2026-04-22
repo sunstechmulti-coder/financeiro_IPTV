@@ -128,23 +128,23 @@ export function SaidasRapidasList({ saidas, servidores, onAdd, onUpdate, onDelet
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h3 className="font-semibold">Saídas Rápidas</h3>
           <p className="text-sm text-muted-foreground">
             Configure categorias de saídas para lançamento rápido.
           </p>
         </div>
-        <Button size="sm" onClick={() => handleOpen()} disabled={loading}>
+        <Button size="sm" onClick={() => handleOpen()} disabled={loading} className="shrink-0">
           <Plus className="mr-2 h-4 w-4" />
           Adicionar
         </Button>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <Label className="text-sm">Filtrar por categoria:</Label>
         <Select value={filtroCategoria} onValueChange={setFiltroCategoria}>
-          <SelectTrigger className="w-48">
+          <SelectTrigger className="w-full sm:w-48">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -156,7 +156,85 @@ export function SaidasRapidasList({ saidas, servidores, onAdd, onUpdate, onDelet
         </Select>
       </div>
 
-      <div className="rounded-lg border">
+      <div className="space-y-3 md:hidden">
+        {saidasFiltradas.map(s => (
+          <div key={s.id} className="rounded-lg border bg-card p-4">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-base font-semibold">{s.nome}</div>
+                <div className="mt-1 text-sm text-muted-foreground">{s.categoria}</div>
+              </div>
+
+              <div className="flex shrink-0 items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => handleOpen(s)}
+                  disabled={loading}
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8" disabled={loading}>
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Excluir saída rápida?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Esta ação não pode ser desfeita.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => handleDelete(s.id)}>Excluir</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+              <div>
+                <div className="text-xs text-muted-foreground">Servidor</div>
+                <div className="mt-1 font-medium">{getServidorNome(s.serverId)}</div>
+              </div>
+
+              <div>
+                <div className="text-xs text-muted-foreground">Valor Unit.</div>
+                <div className="mt-1 font-medium">{formatCurrency(getSaidaValorUnitario(s))}</div>
+              </div>
+
+              <div>
+                <div className="text-xs text-muted-foreground">Usa Qtd</div>
+                <div className="mt-1 font-medium">{s.usaQuantidade ? '✓' : '—'}</div>
+              </div>
+
+              <div>
+                <div className="text-xs text-muted-foreground">Categoria</div>
+                <div className="mt-1 font-medium">{s.categoria}</div>
+              </div>
+
+              <div className="col-span-2">
+                <div className="text-xs text-muted-foreground">Descrição Padrão</div>
+                <div className="mt-1 break-words font-medium">{s.descricaoPadrao || '—'}</div>
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {saidasFiltradas.length === 0 && (
+          <div className="rounded-lg border py-8 text-center text-muted-foreground">
+            Nenhuma saída rápida cadastrada.
+          </div>
+        )}
+      </div>
+
+      <div className="hidden rounded-lg border md:block">
         <Table>
           <TableHeader>
             <TableRow>

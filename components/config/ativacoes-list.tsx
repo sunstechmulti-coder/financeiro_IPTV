@@ -313,7 +313,7 @@ export function AtivacoesList({ products, servidores, onAdd, onUpdate, onDelete 
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingProduct ? 'Editar Produto' : 'Novo Produto de Ativação'}</DialogTitle>
             <DialogDescription>
@@ -322,7 +322,7 @@ export function AtivacoesList({ products, servidores, onAdd, onUpdate, onDelete 
           </DialogHeader>
 
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Nome</Label>
                 <Input
@@ -354,7 +354,7 @@ export function AtivacoesList({ products, servidores, onAdd, onUpdate, onDelete 
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Validade (meses)</Label>
                 <Input
@@ -377,16 +377,101 @@ export function AtivacoesList({ products, servidores, onAdd, onUpdate, onDelete 
               </div>
             </div>
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
+            <div className="space-y-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <Label>Regras de Preço</Label>
-                <Button size="sm" variant="outline" onClick={handleAddRule} disabled={loading}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleAddRule}
+                  disabled={loading}
+                  className="w-full sm:w-auto"
+                >
                   <Plus className="mr-1 h-3 w-3" />
                   Adicionar Regra
                 </Button>
               </div>
 
-              <div className="rounded-lg border">
+              <div className="space-y-3 sm:hidden">
+                {form.regrasPreco.map((rule, idx) =>
+                  editingRuleIdx === idx ? (
+                    <div key={idx} className="rounded-lg border p-3 space-y-3">
+                      <div>
+                        <div className="mb-1 text-xs text-muted-foreground">Custo Mínimo</div>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={ruleForm.minCost || ''}
+                          onChange={e => setRuleForm({ ...ruleForm, minCost: parseFloat(e.target.value) || 0 })}
+                        />
+                      </div>
+
+                      <div>
+                        <div className="mb-1 text-xs text-muted-foreground">Custo Máximo</div>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={ruleForm.maxCost || ''}
+                          onChange={e => setRuleForm({ ...ruleForm, maxCost: parseFloat(e.target.value) || 0 })}
+                        />
+                      </div>
+
+                      <div>
+                        <div className="mb-1 text-xs text-muted-foreground">Preço de Venda</div>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={ruleForm.salePrice || ''}
+                          onChange={e => setRuleForm({ ...ruleForm, salePrice: parseFloat(e.target.value) || 0 })}
+                        />
+                      </div>
+
+                      <div className="flex justify-end gap-2">
+                        <Button variant="outline" size="sm" onClick={handleCancelRule}>
+                          Cancelar
+                        </Button>
+                        <Button size="sm" onClick={handleSaveRule}>
+                          Salvar regra
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div key={idx} className="rounded-lg border p-3 space-y-2">
+                      <div>
+                        <div className="text-xs text-muted-foreground">Custo Mínimo</div>
+                        <div className="font-medium">{formatCurrency(rule.minCost)}</div>
+                      </div>
+
+                      <div>
+                        <div className="text-xs text-muted-foreground">Custo Máximo</div>
+                        <div className="font-medium">{formatCurrency(rule.maxCost)}</div>
+                      </div>
+
+                      <div>
+                        <div className="text-xs text-muted-foreground">Preço de Venda</div>
+                        <div className="font-medium">{formatCurrency(rule.salePrice)}</div>
+                      </div>
+
+                      <div className="flex justify-end gap-1 pt-1">
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditRule(idx)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDeleteRule(idx)}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                )}
+
+                {form.regrasPreco.length === 0 && (
+                  <div className="rounded-lg border py-4 text-center text-sm text-muted-foreground">
+                    Nenhuma regra de preço.
+                  </div>
+                )}
+              </div>
+
+              <div className="hidden rounded-lg border sm:block">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -470,11 +555,16 @@ export function AtivacoesList({ products, servidores, onAdd, onUpdate, onDelete 
             </div>
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={loading}>
+          <DialogFooter className="flex-col-reverse gap-2 sm:flex-row">
+            <Button
+              variant="outline"
+              onClick={() => setDialogOpen(false)}
+              disabled={loading}
+              className="w-full sm:w-auto"
+            >
               Cancelar
             </Button>
-            <Button onClick={handleSave} disabled={loading}>
+            <Button onClick={handleSave} disabled={loading} className="w-full sm:w-auto">
               {loading ? 'Salvando...' : 'Salvar'}
             </Button>
           </DialogFooter>

@@ -54,6 +54,7 @@ export function TransactionsTable({
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [filterType, setFilterType] = useState<FilterType>('all')
   const [filterMonth, setFilterMonth] = useState<string>('all')
+  const [filterDate, setFilterDate] = useState<string>('')
   const [search, setSearch] = useState('')
   const [deleteId, setDeleteId] = useState<string | null>(null)
 
@@ -72,6 +73,7 @@ export function TransactionsTable({
     .filter(({ transaction: t }) => {
       if (filterType !== 'all' && t.type !== filterType) return false
       if (filterMonth !== 'all' && !t.date.startsWith(filterMonth)) return false
+      if (filterDate && t.date !== filterDate) return false
       if (search && !t.description.toLowerCase().includes(search.toLowerCase()))
         return false
       return true
@@ -185,6 +187,13 @@ export function TransactionsTable({
               ))}
             </SelectContent>
           </Select>
+
+          <Input
+            type="date"
+            value={filterDate}
+            onChange={(e) => setFilterDate(e.target.value)}
+            className="w-[170px]"
+          />
 
           <Button variant="outline" size="sm" onClick={exportCSV}>
             <Download className="mr-2 h-4 w-4" />

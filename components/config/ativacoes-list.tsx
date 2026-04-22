@@ -131,7 +131,6 @@ export function AtivacoesList({ products, servidores, onAdd, onUpdate, onDelete 
     setLoading(false)
   }
 
-  // Rule management
   const handleAddRule = () => {
     setForm({ ...form, regrasPreco: [...form.regrasPreco, { ...EMPTY_RULE }] })
   }
@@ -160,24 +159,99 @@ export function AtivacoesList({ products, servidores, onAdd, onUpdate, onDelete 
     setForm({ ...form, regrasPreco: newRules })
   }
 
-  const getServidorNome = (id?: string) => id ? servidores.find(s => s.id === id)?.nome ?? '—' : '—'
+  const getServidorNome = (id?: string) =>
+    id ? servidores.find(s => s.id === id)?.nome ?? '—' : '—'
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h3 className="font-semibold">Produtos de Ativação</h3>
           <p className="text-sm text-muted-foreground">
             Configure produtos de ativação com custos variáveis e regras de preço.
           </p>
         </div>
-        <Button size="sm" onClick={() => handleOpen()} disabled={loading}>
+        <Button size="sm" onClick={() => handleOpen()} disabled={loading} className="shrink-0">
           <Plus className="mr-2 h-4 w-4" />
           Adicionar
         </Button>
       </div>
 
-      <div className="rounded-lg border">
+      <div className="space-y-3 md:hidden">
+        {products.map(p => (
+          <div key={p.id} className="rounded-lg border bg-card p-4">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-base font-semibold">{p.nome}</div>
+              </div>
+
+              <div className="flex shrink-0 items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => handleOpen(p)}
+                  disabled={loading}
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8" disabled={loading}>
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Excluir produto?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Esta ação não pode ser desfeita.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => handleDelete(p.id)}>Excluir</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+              <div>
+                <div className="text-xs text-muted-foreground">Servidor Vinculado</div>
+                <div className="mt-1 font-medium">{getServidorNome(p.linkedServerId)}</div>
+              </div>
+
+              <div>
+                <div className="text-xs text-muted-foreground">Validade (meses)</div>
+                <div className="mt-1 font-medium">{p.validadeMeses}</div>
+              </div>
+
+              <div className="col-span-2">
+                <div className="text-xs text-muted-foreground">Custos Permitidos</div>
+                <div className="mt-1 break-words font-medium">
+                  {p.custosPermitidos.length > 0 ? formatCustos(p.custosPermitidos) : '—'}
+                </div>
+              </div>
+
+              <div className="col-span-2">
+                <div className="text-xs text-muted-foreground">Regras de Preço</div>
+                <div className="mt-1 font-medium">{p.regrasPreco.length}</div>
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {products.length === 0 && (
+          <div className="rounded-lg border py-8 text-center text-muted-foreground">
+            Nenhum produto de ativação cadastrado.
+          </div>
+        )}
+      </div>
+
+      <div className="hidden rounded-lg border md:block">
         <Table>
           <TableHeader>
             <TableRow>
@@ -238,7 +312,6 @@ export function AtivacoesList({ products, servidores, onAdd, onUpdate, onDelete 
         </Table>
       </div>
 
-      {/* Dialog de edição/adição */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -247,6 +320,7 @@ export function AtivacoesList({ products, servidores, onAdd, onUpdate, onDelete 
               Configure os detalhes do produto de ativação.
             </DialogDescription>
           </DialogHeader>
+
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -258,21 +332,28 @@ export function AtivacoesList({ products, servidores, onAdd, onUpdate, onDelete 
                   disabled={loading}
                 />
               </div>
+
               <div className="space-y-2">
                 <Label>Servidor Vinculado</Label>
-                <Select value={form.linkedServerId || 'none'} onValueChange={v => setForm({ ...form, linkedServerId: v === 'none' ? undefined : v })}>
+                <Select
+                  value={form.linkedServerId || 'none'}
+                  onValueChange={v => setForm({ ...form, linkedServerId: v === 'none' ? undefined : v })}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Nenhum" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Nenhum</SelectItem>
                     {servidores.map(s => (
-                      <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.nome}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
             </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Validade (meses)</Label>
@@ -284,6 +365,7 @@ export function AtivacoesList({ products, servidores, onAdd, onUpdate, onDelete 
                   disabled={loading}
                 />
               </div>
+
               <div className="space-y-2">
                 <Label>Custos Permitidos (separados por vírgula)</Label>
                 <Input
@@ -295,7 +377,6 @@ export function AtivacoesList({ products, servidores, onAdd, onUpdate, onDelete 
               </div>
             </div>
 
-            {/* Regras de preço */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label>Regras de Preço</Label>
@@ -304,6 +385,7 @@ export function AtivacoesList({ products, servidores, onAdd, onUpdate, onDelete 
                   Adicionar Regra
                 </Button>
               </div>
+
               <div className="rounded-lg border">
                 <Table>
                   <TableHeader>
@@ -374,6 +456,7 @@ export function AtivacoesList({ products, servidores, onAdd, onUpdate, onDelete 
                         </TableRow>
                       )
                     )}
+
                     {form.regrasPreco.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={4} className="text-center text-muted-foreground py-4">
@@ -386,8 +469,11 @@ export function AtivacoesList({ products, servidores, onAdd, onUpdate, onDelete 
               </div>
             </div>
           </div>
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={loading}>Cancelar</Button>
+            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={loading}>
+              Cancelar
+            </Button>
             <Button onClick={handleSave} disabled={loading}>
               {loading ? 'Salvando...' : 'Salvar'}
             </Button>

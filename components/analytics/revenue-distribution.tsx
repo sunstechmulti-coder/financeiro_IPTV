@@ -75,16 +75,16 @@ export function RevenueDistribution({
             Nenhuma receita no período.
           </p>
         ) : (
-          <div className="flex h-[340px] md:h-[380px] flex-col items-center justify-center">
-            <div className="h-[250px] w-full md:h-[290px]">
+          <div className="flex h-[300px] md:h-[380px] flex-col items-center justify-center">
+            <div className="h-[220px] w-full md:h-[290px]">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
                     data={data}
                     cx="50%"
                     cy="50%"
-                    innerRadius={90}
-                    outerRadius={145}
+                    innerRadius={70}     // ↓ menor no mobile
+                    outerRadius={110}    // ↓ menor no mobile
                     paddingAngle={3}
                     dataKey="value"
                   >
@@ -112,11 +112,11 @@ export function RevenueDistribution({
               </ResponsiveContainer>
             </div>
 
-            <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs md:text-sm">
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-[11px] md:text-sm">
               {data.map((entry, i) => (
                 <div key={entry.name} className="flex items-center gap-1.5">
                   <span
-                    className="h-3 w-3 rounded-full"
+                    className="h-2.5 w-2.5 rounded-full"
                     style={{ backgroundColor: COLORS[i % COLORS.length] }}
                   />
                   <span style={{ color: COLORS[i % COLORS.length] }}>

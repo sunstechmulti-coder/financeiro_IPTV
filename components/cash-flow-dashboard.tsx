@@ -1,7 +1,19 @@
 'use client'
 
 import { useState, useMemo, useEffect } from 'react'
-import { Plus, Wallet, LayoutDashboard, List, Settings, Loader2, BarChart2, Mail, LogOut, Clock, ChevronLeft, ChevronRight } from 'lucide-react'
+import {
+  Plus,
+  LayoutDashboard,
+  List,
+  Settings,
+  Loader2,
+  BarChart2,
+  Mail,
+  LogOut,
+  Clock,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SummaryCards } from '@/components/summary-cards'
 import { TransactionsTable } from '@/components/transactions-table'
@@ -11,6 +23,7 @@ import { CreditsCard } from '@/components/credits-card'
 import { QuickEntry } from '@/components/quick-entry'
 import { ConfigPage } from '@/components/config/config-page'
 import { AnalyticsPage } from '@/components/analytics/analytics-page'
+import { DailyRobotAssistant } from '@/components/daily-robot-assistant'
 import { cn } from '@/lib/utils'
 import type { Transaction } from '@/lib/types'
 import { useSupabaseData } from '@/hooks/use-supabase-data'
@@ -52,14 +65,11 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
   const [selectedMonth, setSelectedMonth] = useState(today.getMonth())
   const [selectedYear, setSelectedYear] = useState(today.getFullYear())
 
-  // Função para obter badge de subscription
   const getSubscriptionBadge = () => {
     if (!subscription) return null
 
-    // Admin não mostra badge
     if (userEmail === ADMIN_EMAIL) return null
 
-    // Ainda não fez primeiro acesso
     if (!subscription.first_access_at) {
       return (
         <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 text-xs">
@@ -71,7 +81,6 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
 
     const daysRemaining = subscription.days_remaining ?? 0
 
-    // Expirado
     if (subscription.is_expired || daysRemaining <= 0) {
       return (
         <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-destructive/20 text-destructive text-xs">
@@ -81,7 +90,6 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
       )
     }
 
-    // Menos de 7 dias - laranja
     if (daysRemaining <= 7) {
       return (
         <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 text-xs">
@@ -91,7 +99,6 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
       )
     }
 
-    // Menos de 15 dias - amarelo
     if (daysRemaining <= 15) {
       return (
         <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 text-xs">
@@ -101,7 +108,6 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
       )
     }
 
-    // Trial
     if (subscription.plan_type === 'trial') {
       return (
         <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 text-xs">
@@ -111,7 +117,6 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
       )
     }
 
-    // Ativo normal - verde
     return (
       <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-xs">
         <Clock className="h-3 w-3" />
@@ -125,10 +130,14 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
       setIsAdmin(data.user?.email === ADMIN_EMAIL)
       setUserEmail(data.user?.email ?? null)
     })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       setIsAdmin(session?.user?.email === ADMIN_EMAIL)
       setUserEmail(session?.user?.email ?? null)
     })
+
     return () => subscription.unsubscribe()
   }, [])
 
@@ -140,7 +149,6 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
     transactions,
     servidores,
     creditMovements: movements,
-    activationTransactions: activationTxs,
     activationProducts,
     planos,
     saidasRapidas,
@@ -172,13 +180,17 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
   } = useSupabaseData()
 
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
+  const [editingTransaction, setEditingTransaction] =
+    useState<Transaction | null>(null)
   const [activeTab, setActiveTab] = useState<Tab>('dashboard')
 
   const selectedMonthLabel = useMemo(() => {
-    const monthName = new Date(selectedYear, selectedMonth, 1).toLocaleDateString('pt-BR', {
-      month: 'long',
-    })
+    const monthName = new Date(selectedYear, selectedMonth, 1).toLocaleDateString(
+      'pt-BR',
+      {
+        month: 'long',
+      }
+    )
 
     return `${monthName.charAt(0).toUpperCase()}${monthName.slice(1)} ${selectedYear}`
   }, [selectedMonth, selectedYear])
@@ -204,10 +216,16 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
     const income = monthTransactions
       .filter((t) => t.type === 'income')
       .reduce((s, t) => s + t.amount, 0)
+
     const expenses = monthTransactions
       .filter((t) => t.type === 'expense')
       .reduce((s, t) => s + t.amount, 0)
-    return { totalIncome: income, totalExpenses: expenses, balance: income - expenses }
+
+    return {
+      totalIncome: income,
+      totalExpenses: expenses,
+      balance: income - expenses,
+    }
   }, [transactions, selectedMonth, selectedYear])
 
   const handleSaveTransaction = async (transaction: Transaction) => {
@@ -216,28 +234,28 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
     } else {
       await addTransaction(transaction)
     }
+
     setEditingTransaction(null)
-    // Refresh data to get updated balances
     await refreshData()
   }
 
   const handleDeleteTransaction = async (id: string) => {
-    // Check if the transaction is associated with credits
-    const tx = transactions.find(t => t.id === id)
+    const tx = transactions.find((t) => t.id === id)
+
     if (tx?.creditsDelta && tx.serverId) {
-      // Reverse the credit adjustment
       await adjustCreditsBalance(tx.serverId, -tx.creditsDelta)
       await removeCreditMovementByTransaction(id)
     }
-    // Check if it's an activation transaction
+
     const actTx = getActivationTransactionByTransactionId(id)
+
     if (actTx) {
       await removeActivationTransactionByTransactionId(id)
     }
+
     await deleteTransaction(id)
   }
 
-  // Loading state
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -251,19 +269,26 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      {/* Header */}
       <header className="sticky top-0 z-40 border-b bg-card/80 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
           <div className="flex items-center gap-2 font-semibold">
-            <img src="/logo-icon.png" alt="Cash Flow" className="h-9 w-9 object-contain" />
+            <img
+              src="/logo-icon.png"
+              alt="Cash Flow"
+              className="h-9 w-9 object-contain"
+            />
             <span>Cash Flow</span>
+
             {userEmail && (
               <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-border">
                 <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+
                 <span className="text-xs text-muted-foreground font-normal truncate max-w-[140px] hidden lg:inline">
                   {userEmail}
                 </span>
+
                 {getSubscriptionBadge()}
+
                 <Button
                   variant="ghost"
                   size="sm"
@@ -278,7 +303,6 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
             )}
           </div>
 
-          {/* Navigation tabs */}
           <nav className="hidden sm:flex items-center gap-1">
             {TABS.map(({ id, label, icon: Icon }) => (
               <button
@@ -297,7 +321,6 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
             ))}
           </nav>
 
-          {/* New transaction button - hidden on mobile to avoid email overlap */}
           <Button
             size="sm"
             onClick={() => {
@@ -312,7 +335,6 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
           </Button>
         </div>
 
-        {/* Mobile tabs */}
         <div className="sm:hidden flex border-t overflow-x-auto">
           {TABS.map(({ id, label, icon: Icon }) => (
             <button
@@ -331,7 +353,6 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
           ))}
         </div>
 
-        {/* Mobile floating new transaction button */}
         <div className="sm:hidden fixed bottom-10 right-4 z-30">
           <Button
             size="sm"
@@ -347,12 +368,10 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
         </div>
       </header>
 
-      {/* Main content */}
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-6xl space-y-6 p-4 pb-24">
           {activeTab === 'dashboard' && (
             <>
-              {/* Quick Entry - Lançamento Express */}
               <QuickEntry
                 planos={planos}
                 servidores={servidores}
@@ -386,16 +405,15 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
                 </Button>
               </div>
 
+              <DailyRobotAssistant transactions={transactions} />
+
               <SummaryCards
                 totalIncome={totalIncome}
                 totalExpenses={totalExpenses}
                 balance={balance}
               />
 
-              <CreditsCard
-                servidores={servidores}
-                movements={movements}
-              />
+              <CreditsCard servidores={servidores} movements={movements} />
 
               <RevenueHeatmap transactions={transactions} />
             </>
@@ -450,7 +468,6 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
         </div>
       </main>
 
-      {/* Transaction dialog */}
       <TransactionDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}

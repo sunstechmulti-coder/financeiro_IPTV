@@ -166,6 +166,7 @@ export function DailyRobotAssistant({ transactions }: DailyRobotAssistantProps) 
             height: 78px;
             flex: 0 0 auto;
             color: rgb(234 179 8);
+            --robot-scale: 1.18;
             transform-origin: 50% 88%;
             filter: drop-shadow(0 0 16px color-mix(in srgb, currentColor 26%, transparent));
             animation: dailyRobotFloat 3.4s ease-in-out infinite;
@@ -505,40 +506,40 @@ export function DailyRobotAssistant({ transactions }: DailyRobotAssistantProps) 
 
           @keyframes dailyRobotFloat {
             0%, 100% {
-              transform: translateY(0) rotate(0deg);
+              transform: scale(var(--robot-scale)) translateY(0) rotate(0deg);
             }
             50% {
-              transform: translateY(-4px) rotate(-1deg);
+              transform: scale(var(--robot-scale)) translateY(-4px) rotate(-1deg);
             }
           }
 
           @keyframes dailyRobotCelebrate {
             0%, 100% {
-              transform: translateY(0) rotate(0deg) scale(1);
+              transform: scale(var(--robot-scale)) translateY(0) rotate(0deg);
             }
             25% {
-              transform: translateY(-5px) rotate(-4deg) scale(1.02);
+              transform: scale(calc(var(--robot-scale) + 0.03)) translateY(-5px) rotate(-4deg);
             }
             55% {
-              transform: translateY(-2px) rotate(4deg) scale(1.01);
+              transform: scale(calc(var(--robot-scale) + 0.02)) translateY(-2px) rotate(4deg);
             }
             75% {
-              transform: translateY(-3px) rotate(-2deg) scale(1.02);
+              transform: scale(calc(var(--robot-scale) + 0.03)) translateY(-3px) rotate(-2deg);
             }
           }
 
           @keyframes dailyRobotAlert {
             0%, 100% {
-              transform: rotate(0deg);
+              transform: scale(var(--robot-scale)) rotate(0deg);
             }
             25% {
-              transform: rotate(-2deg);
+              transform: scale(var(--robot-scale)) rotate(-2deg);
             }
             50% {
-              transform: rotate(0deg);
+              transform: scale(var(--robot-scale)) rotate(0deg);
             }
             75% {
-              transform: rotate(2deg);
+              transform: scale(var(--robot-scale)) rotate(2deg);
             }
           }
 
@@ -551,14 +552,24 @@ export function DailyRobotAssistant({ transactions }: DailyRobotAssistantProps) 
             }
           }
 
-          @media (max-width: 640px) {
-            .daily-robot {
-              width: 64px;
-              height: 72px;
-              transform: scale(0.92);
-              margin-left: -4px;
-            }
-          }
+@media (max-width: 640px) {
+  .daily-robot {
+    width: 70px;
+    height: 82px;
+    --robot-scale: 1.02;
+    margin-left: -2px;
+    margin-top: 2px;
+  }
+
+  .daily-robot::before,
+  .daily-robot::after {
+    bottom: 4px;
+  }
+
+  .daily-robot-body {
+    bottom: 12px;
+  }
+}
         `}</style>
       </CardContent>
     </Card>

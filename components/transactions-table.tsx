@@ -46,14 +46,24 @@ interface TransactionsTableProps {
   onDelete: (id: string) => void
 }
 
+function getCurrentMonthKey() {
+  const today = new Date()
+  const year = today.getFullYear()
+  const month = String(today.getMonth() + 1).padStart(2, '0')
+
+  return `${year}-${month}`
+}
+
 export function TransactionsTable({
   transactions,
   onEdit,
   onDelete,
 }: TransactionsTableProps) {
+  const currentMonthKey = getCurrentMonthKey()
+
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [filterType, setFilterType] = useState<FilterType>('all')
-  const [filterMonth, setFilterMonth] = useState<string>('all')
+  const [filterMonth, setFilterMonth] = useState<string>(currentMonthKey)
   const [filterDate, setFilterDate] = useState<string>('')
   const [search, setSearch] = useState('')
   const [deleteId, setDeleteId] = useState<string | null>(null)
@@ -63,9 +73,9 @@ export function TransactionsTable({
     index,
   }))
 
-  // Get unique months from transactions
+  // Get unique months from transactions, keeping current month available even if empty
   const months = Array.from(
-    new Set(transactions.map((t) => t.date.substring(0, 7)))
+    new Set([currentMonthKey, ...transactions.map((t) => t.date.substring(0, 7))])
   ).sort((a, b) => b.localeCompare(a))
 
   // Filter and sort transactions
@@ -94,8 +104,14 @@ export function TransactionsTable({
   const balances = new Map<string, number>()
   let runningBalance = 0
 
-  // Calculate cumulative balance including previous transactions
-  const allSortedTransactions = [...transactionsWithIndex]
+  // Quando um mês está selecionado, o saldo começa do zero naquele mês.
+  // Quando "Todos os Meses" está selecionado, mantém o saldo acumulado geral.
+  const balanceBaseTransactions = transactionsWithIndex.filter(({ transaction: t }) => {
+    if (filterMonth === 'all') return true
+    return t.date.startsWith(filterMonth)
+  })
+
+  const allSortedTransactions = [...balanceBaseTransactions]
     .sort((a, b) => {
       const dateA = new Date(a.transaction.date + 'T00:00:00').getTime()
       const dateB = new Date(b.transaction.date + 'T00:00:00').getTime()

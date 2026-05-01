@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useEffect } from 'react'
-import { Plus, Wallet, LayoutDashboard, List, Settings, Loader2, BarChart2, Mail, LogOut, Clock } from 'lucide-react'
+import { Plus, Wallet, LayoutDashboard, List, Settings, Loader2, BarChart2, Mail, LogOut, Clock, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SummaryCards } from '@/components/summary-cards'
 import { TransactionsTable } from '@/components/transactions-table'
@@ -47,6 +47,10 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
   const [isAdmin, setIsAdmin] = useState(false)
   const [userEmail, setUserEmail] = useState<string | null>(null)
   const supabase = createClient()
+
+  const today = new Date()
+  const [selectedMonth, setSelectedMonth] = useState(today.getMonth())
+  const [selectedYear, setSelectedYear] = useState(today.getFullYear())
 
   // Função para obter badge de subscription
   const getSubscriptionBadge = () => {
@@ -171,15 +175,40 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [activeTab, setActiveTab] = useState<Tab>('dashboard')
 
+  const selectedMonthLabel = useMemo(() => {
+    const monthName = new Date(selectedYear, selectedMonth, 1).toLocaleDateString('pt-BR', {
+      month: 'long',
+    })
+
+    return `${monthName.charAt(0).toUpperCase()}${monthName.slice(1)} ${selectedYear}`
+  }, [selectedMonth, selectedYear])
+
+  const handlePreviousMonth = () => {
+    const date = new Date(selectedYear, selectedMonth - 1, 1)
+    setSelectedMonth(date.getMonth())
+    setSelectedYear(date.getFullYear())
+  }
+
+  const handleNextMonth = () => {
+    const date = new Date(selectedYear, selectedMonth + 1, 1)
+    setSelectedMonth(date.getMonth())
+    setSelectedYear(date.getFullYear())
+  }
+
   const { totalIncome, totalExpenses, balance } = useMemo(() => {
-    const income = transactions
+    const monthTransactions = transactions.filter((t) => {
+      const date = new Date(t.date + 'T00:00:00')
+      return date.getMonth() === selectedMonth && date.getFullYear() === selectedYear
+    })
+
+    const income = monthTransactions
       .filter((t) => t.type === 'income')
       .reduce((s, t) => s + t.amount, 0)
-    const expenses = transactions
+    const expenses = monthTransactions
       .filter((t) => t.type === 'expense')
       .reduce((s, t) => s + t.amount, 0)
     return { totalIncome: income, totalExpenses: expenses, balance: income - expenses }
-  }, [transactions])
+  }, [transactions, selectedMonth, selectedYear])
 
   const handleSaveTransaction = async (transaction: Transaction) => {
     if (editingTransaction) {
@@ -330,6 +359,32 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
                 onSave={handleSaveTransaction}
                 onAdjustCredits={adjustCreditsBalance}
               />
+
+              <div className="flex items-center justify-end gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handlePreviousMonth}
+                  className="h-8 w-8 p-0"
+                  aria-label="Mês anterior"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+
+                <span className="min-w-[120px] text-center text-sm font-semibold">
+                  {selectedMonthLabel}
+                </span>
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleNextMonth}
+                  className="h-8 w-8 p-0"
+                  aria-label="Próximo mês"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
 
               <SummaryCards
                 totalIncome={totalIncome}

@@ -53,7 +53,7 @@ export function SummaryCards({
         <CardContent className="pt-0">
           <div className="flex items-center justify-between">
             <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Saldo Atual</p>
+              <p className="text-sm text-muted-foreground">Saldo do Mês</p>
               <p
                 className={`text-2xl font-bold ${balance >= 0 ? 'text-income' : 'text-expense'}`}
               >

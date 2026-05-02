@@ -305,7 +305,9 @@ export function DailyRobotAssistant({ transactions, month, year }: DailyRobotAss
             </div>
 
             <div className="rounded-lg bg-background/60 px-3 py-2">
-              <p className="text-[11px] text-muted-foreground">Vs dia ant.</p>
+              <p className="text-[11px] text-muted-foreground">
+  Vs {analysis.previousLabel.slice(0, 5)}
+</p>
               <p className={`text-sm font-semibold ${analysis.comparisonClass}`}>
                 {analysis.comparisonText}
               </p>

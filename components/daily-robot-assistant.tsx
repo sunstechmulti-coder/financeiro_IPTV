@@ -185,29 +185,41 @@ export function DailyRobotAssistant({ transactions, month, year }: DailyRobotAss
       mood = todayFlow.salesCount >= 2 ? 'hot' : 'celebrate'
       title = mood === 'hot' ? 'Dia acelerado' : 'Dia positivo'
       message = `Hoje já tem ${formatCurrency(todayFlow.income)} em entradas e ${todayFlow.salesCount} ${pluralVendas(todayFlow.salesCount)}. No mesmo dia do mês anterior não havia receita.`
-    } else if (incomeDeltaPercent !== null) {
-      if (incomeDeltaPercent <= -50 || (salesDeltaPercent !== null && salesDeltaPercent <= -50)) {
-        mood = 'danger'
-        title = 'Queda forte no dia'
-        message = `Hoje está ${formatPercent(incomeDeltaPercent)} abaixo de ${previousLabel}. Foram ${todayFlow.salesCount} ${pluralVendas(todayFlow.salesCount)} hoje contra ${previousFlow.salesCount} no mês anterior.`
-      } else if (incomeDeltaPercent < -10) {
-        mood = 'alert'
-        title = 'Atenção no ritmo'
-        message = `Hoje está ${formatPercent(incomeDeltaPercent)} abaixo do mesmo dia do mês anterior. Ainda dá para recuperar.`
-      } else if (incomeDeltaPercent >= 50 || (salesDeltaPercent !== null && salesDeltaPercent >= 50)) {
-        mood = 'hot'
-        title = 'Dia muito forte'
-        message = `Hoje está ${formatPercent(incomeDeltaPercent)} acima de ${previousLabel}. O robô está vendo um ritmo bem mais forte.`
-      } else if (incomeDeltaPercent > 10) {
-        mood = todayFlow.salesCount >= 2 ? 'celebrate' : 'happy'
-        title = 'Dia melhor'
-        message = `Hoje está ${formatPercent(incomeDeltaPercent)} acima do mesmo dia do mês anterior.`
-      } else {
-        mood = 'neutral'
-        title = 'Ritmo estável'
-        message = `Hoje está parecido com ${previousLabel}. Diferença de ${formatPercent(incomeDeltaPercent)} nas entradas.`
-      }
-    }
+} else if (incomeDeltaPercent !== null) {
+  const salesFellHard =
+    salesDeltaPercent !== null && salesDeltaPercent <= -50
+
+  const salesRoseHard =
+    salesDeltaPercent !== null && salesDeltaPercent >= 50
+
+  if (incomeDeltaPercent <= -50) {
+    mood = 'danger'
+    title = 'Queda forte no dia'
+    message = `Hoje está ${formatPercent(incomeDeltaPercent)} abaixo de ${previousLabel}. Foram ${todayFlow.salesCount} ${pluralVendas(todayFlow.salesCount)} hoje contra ${previousFlow.salesCount} no mês anterior.`
+  } else if (incomeDeltaPercent < -10) {
+    mood = 'alert'
+    title = 'Atenção no ritmo'
+    message = `Hoje está ${formatPercent(incomeDeltaPercent)} abaixo do mesmo dia do mês anterior. Ainda dá para recuperar.`
+  } else if (incomeDeltaPercent >= 50) {
+    mood = 'hot'
+    title = 'Dia muito forte'
+    message = salesFellHard
+      ? `Hoje está ${formatPercent(incomeDeltaPercent)} acima de ${previousLabel}, mesmo com menos vendas. O ticket médio puxou o resultado.`
+      : `Hoje está ${formatPercent(incomeDeltaPercent)} acima de ${previousLabel}. O robô está vendo um ritmo bem mais forte.`
+  } else if (incomeDeltaPercent > 10) {
+    mood = todayFlow.salesCount >= 2 ? 'celebrate' : 'happy'
+    title = salesFellHard ? 'Receita acima, ticket maior' : 'Dia melhor'
+    message = salesFellHard
+      ? `Hoje está ${formatPercent(incomeDeltaPercent)} acima do mesmo dia do mês anterior, mesmo com ${todayFlow.salesCount} ${pluralVendas(todayFlow.salesCount)} contra ${previousFlow.salesCount} no mês anterior.`
+      : `Hoje está ${formatPercent(incomeDeltaPercent)} acima do mesmo dia do mês anterior.`
+  } else {
+    mood = salesRoseHard ? 'happy' : 'neutral'
+    title = salesFellHard ? 'Receita estável' : 'Ritmo estável'
+    message = salesFellHard
+      ? `A receita está próxima do mesmo dia do mês anterior, mas com menos vendas. O ticket médio está compensando.`
+      : `Hoje está parecido com ${previousLabel}. Diferença de ${formatPercent(incomeDeltaPercent)} nas entradas.`
+  }
+}
 
     return {
       todayFlow,

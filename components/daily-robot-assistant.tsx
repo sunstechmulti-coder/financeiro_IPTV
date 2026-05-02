@@ -8,100 +8,242 @@ import type { Transaction } from '@/lib/types'
 
 interface DailyRobotAssistantProps {
   transactions: Transaction[]
+  month?: number
+  year?: number
 }
 
-type RobotMood = 'neutral' | 'happy' | 'celebrate' | 'alert'
+type RobotMood = 'neutral' | 'happy' | 'celebrate' | 'hot' | 'alert' | 'danger'
 
-function getTodayKey() {
-  const today = new Date()
+interface DailyFlow {
+  income: number
+  expenses: number
+  balance: number
+  salesCount: number
+}
 
+function toDateKey(date: Date) {
   return [
-    today.getFullYear(),
-    String(today.getMonth() + 1).padStart(2, '0'),
-    String(today.getDate()).padStart(2, '0'),
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
   ].join('-')
 }
 
-export function DailyRobotAssistant({ transactions }: DailyRobotAssistantProps) {
-  const todayFlow = useMemo(() => {
-    const todayKey = getTodayKey()
+function getDaysInMonth(year: number, month: number) {
+  return new Date(year, month + 1, 0).getDate()
+}
 
-    const todayTransactions = transactions.filter((transaction) => {
-      return transaction.date === todayKey
-    })
+function getAnalysisDateKey(month?: number, year?: number) {
+  const today = new Date()
 
-    const incomeTransactions = todayTransactions.filter((t) => t.type === 'income')
-    const expenseTransactions = todayTransactions.filter((t) => t.type === 'expense')
+  const targetMonth = typeof month === 'number' ? month : today.getMonth()
+  const targetYear = typeof year === 'number' ? year : today.getFullYear()
+  const targetDay = Math.min(today.getDate(), getDaysInMonth(targetYear, targetMonth))
 
-    const income = incomeTransactions.reduce((sum, t) => sum + t.amount, 0)
-    const expenses = expenseTransactions.reduce((sum, t) => sum + t.amount, 0)
-    const balance = income - expenses
-    const salesCount = incomeTransactions.length
+  return toDateKey(new Date(targetYear, targetMonth, targetDay))
+}
+
+function getPreviousMonthDateKey(dateKey: string) {
+  const [yearValue, monthValue, dayValue] = dateKey.split('-').map(Number)
+
+  const currentMonthIndex = monthValue - 1
+  const previousMonthDate = new Date(yearValue, currentMonthIndex - 1, 1)
+
+  const previousYear = previousMonthDate.getFullYear()
+  const previousMonth = previousMonthDate.getMonth()
+  const previousDay = Math.min(dayValue, getDaysInMonth(previousYear, previousMonth))
+
+  return toDateKey(new Date(previousYear, previousMonth, previousDay))
+}
+
+function formatDateKey(dateKey: string) {
+  const [year, month, day] = dateKey.split('-')
+
+  return `${day}/${month}/${year}`
+}
+
+function getFlowByDate(transactions: Transaction[], dateKey: string): DailyFlow {
+  const dayTransactions = transactions.filter((transaction) => {
+    return transaction.date === dateKey
+  })
+
+  const incomeTransactions = dayTransactions.filter((t) => t.type === 'income')
+  const expenseTransactions = dayTransactions.filter((t) => t.type === 'expense')
+
+  const income = incomeTransactions.reduce((sum, t) => sum + t.amount, 0)
+  const expenses = expenseTransactions.reduce((sum, t) => sum + t.amount, 0)
+  const balance = income - expenses
+  const salesCount = incomeTransactions.length
+
+  return {
+    income,
+    expenses,
+    balance,
+    salesCount,
+  }
+}
+
+function getPercentChange(current: number, previous: number) {
+  if (previous === 0) return null
+
+  return ((current - previous) / previous) * 100
+}
+
+function formatPercent(value: number) {
+  const sign = value > 0 ? '+' : ''
+
+  return `${sign}${value.toFixed(1).replace('.', ',')}%`
+}
+
+function getComparisonText(current: number, previous: number, deltaPercent: number | null) {
+  if (deltaPercent !== null) return formatPercent(deltaPercent)
+
+  if (previous === 0 && current > 0) return 'Novo'
+
+  return 'Sem base'
+}
+
+function getComparisonClass(deltaPercent: number | null, current: number, previous: number) {
+  if (previous === 0 && current > 0) return 'text-income'
+  if (deltaPercent === null) return 'text-yellow-500'
+  if (deltaPercent > 10) return 'text-income'
+  if (deltaPercent < -10) return 'text-expense'
+
+  return 'text-yellow-500'
+}
+
+function pluralVendas(count: number) {
+  return count === 1 ? 'venda' : 'vendas'
+}
+
+export function DailyRobotAssistant({ transactions, month, year }: DailyRobotAssistantProps) {
+  const analysis = useMemo(() => {
+    const analysisDateKey = getAnalysisDateKey(month, year)
+    const previousDateKey = getPreviousMonthDateKey(analysisDateKey)
+
+    const todayFlow = getFlowByDate(transactions, analysisDateKey)
+    const previousFlow = getFlowByDate(transactions, previousDateKey)
+
+    const incomeDeltaPercent = getPercentChange(todayFlow.income, previousFlow.income)
+    const salesDeltaPercent = getPercentChange(todayFlow.salesCount, previousFlow.salesCount)
+
+    const hasTodayMovement = todayFlow.income > 0 || todayFlow.expenses > 0
+    const hasPreviousMovement = previousFlow.income > 0 || previousFlow.expenses > 0
+
+    const previousLabel = formatDateKey(previousDateKey)
 
     let mood: RobotMood = 'neutral'
+    let title = 'Observando o dia'
+    let message = 'Ainda estou acompanhando o movimento de hoje.'
 
-    if (income === 0 && expenses === 0) {
+    if (!hasTodayMovement && !hasPreviousMovement) {
       mood = 'neutral'
-    } else if (balance < 0) {
-      mood = 'alert'
-    } else if (balance > 0 && salesCount >= 2) {
-      mood = 'celebrate'
-    } else if (balance > 0) {
-      mood = 'happy'
+      title = 'Observando o dia'
+      message = `Ainda não tenho movimento hoje e também não houve registro em ${previousLabel}.`
+    } else if (!hasTodayMovement && previousFlow.income > 0) {
+      mood = 'danger'
+      title = 'Dia parado'
+      message = `Hoje ainda não teve entradas. No mesmo dia do mês anterior houve ${formatCurrency(previousFlow.income)} em ${previousFlow.salesCount} ${pluralVendas(previousFlow.salesCount)}.`
+    } else if (todayFlow.balance < 0) {
+      mood = Math.abs(todayFlow.balance) >= Math.max(todayFlow.income, 1) ? 'danger' : 'alert'
+      title = mood === 'danger' ? 'Alerta forte no caixa' : 'Atenção no fluxo'
+      message = 'As saídas de hoje estão maiores que as entradas. Vale acompanhar de perto.'
+    } else if (previousFlow.income === 0 && todayFlow.income > 0) {
+      mood = todayFlow.salesCount >= 2 ? 'hot' : 'celebrate'
+      title = mood === 'hot' ? 'Dia acelerado' : 'Dia positivo'
+      message = `Hoje já tem ${formatCurrency(todayFlow.income)} em entradas e ${todayFlow.salesCount} ${pluralVendas(todayFlow.salesCount)}. No mesmo dia do mês anterior não havia receita.`
+    } else if (incomeDeltaPercent !== null) {
+      if (incomeDeltaPercent <= -50 || (salesDeltaPercent !== null && salesDeltaPercent <= -50)) {
+        mood = 'danger'
+        title = 'Queda forte no dia'
+        message = `Hoje está ${formatPercent(incomeDeltaPercent)} abaixo de ${previousLabel}. Foram ${todayFlow.salesCount} ${pluralVendas(todayFlow.salesCount)} hoje contra ${previousFlow.salesCount} no mês anterior.`
+      } else if (incomeDeltaPercent < -10) {
+        mood = 'alert'
+        title = 'Atenção no ritmo'
+        message = `Hoje está ${formatPercent(incomeDeltaPercent)} abaixo do mesmo dia do mês anterior. Ainda dá para recuperar.`
+      } else if (incomeDeltaPercent >= 50 || (salesDeltaPercent !== null && salesDeltaPercent >= 50)) {
+        mood = 'hot'
+        title = 'Dia muito forte'
+        message = `Hoje está ${formatPercent(incomeDeltaPercent)} acima de ${previousLabel}. O robô está vendo um ritmo bem mais forte.`
+      } else if (incomeDeltaPercent > 10) {
+        mood = todayFlow.salesCount >= 2 ? 'celebrate' : 'happy'
+        title = 'Dia melhor'
+        message = `Hoje está ${formatPercent(incomeDeltaPercent)} acima do mesmo dia do mês anterior.`
+      } else {
+        mood = 'neutral'
+        title = 'Ritmo estável'
+        message = `Hoje está parecido com ${previousLabel}. Diferença de ${formatPercent(incomeDeltaPercent)} nas entradas.`
+      }
     }
 
     return {
-      income,
-      expenses,
-      balance,
-      salesCount,
+      todayFlow,
+      previousFlow,
+      previousLabel,
+      incomeDeltaPercent,
+      comparisonText: getComparisonText(
+        todayFlow.income,
+        previousFlow.income,
+        incomeDeltaPercent
+      ),
+      comparisonClass: getComparisonClass(
+        incomeDeltaPercent,
+        todayFlow.income,
+        previousFlow.income
+      ),
       mood,
+      title,
+      message,
     }
-  }, [transactions])
+  }, [transactions, month, year])
 
   const config = {
     neutral: {
-      title: 'Observando o dia',
-      message: 'Ainda estou acompanhando o movimento de hoje.',
       accent: 'text-yellow-500',
       border: 'border-yellow-500/30',
       bg: 'bg-yellow-500/10',
       icon: Bot,
     },
     happy: {
-      title: 'Dia positivo',
-      message: 'As entradas de hoje estão acima das saídas.',
       accent: 'text-emerald-500',
       border: 'border-emerald-500/30',
       bg: 'bg-emerald-500/10',
       icon: TrendingUp,
     },
     celebrate: {
-      title: 'Bom ritmo de vendas',
-      message: `Hoje já foram registradas ${todayFlow.salesCount} entradas e o saldo está positivo.`,
       accent: 'text-emerald-500',
       border: 'border-emerald-500/30',
       bg: 'bg-emerald-500/10',
       icon: TrendingUp,
     },
+    hot: {
+      accent: 'text-emerald-400',
+      border: 'border-emerald-400/40',
+      bg: 'bg-emerald-500/10',
+      icon: TrendingUp,
+    },
     alert: {
-      title: 'Atenção no fluxo',
-      message: 'As saídas de hoje estão maiores que as entradas.',
       accent: 'text-red-500',
       border: 'border-red-500/30',
       bg: 'bg-red-500/10',
       icon: AlertTriangle,
     },
-  }[todayFlow.mood]
+    danger: {
+      accent: 'text-red-500',
+      border: 'border-red-500/40',
+      bg: 'bg-red-500/10',
+      icon: AlertTriangle,
+    },
+  }[analysis.mood]
 
   const Icon = config.icon
 
   return (
     <Card className={`overflow-hidden ${config.border} ${config.bg}`}>
       <CardContent className="pt-4">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-4">
-            <div className={`daily-robot daily-robot-${todayFlow.mood}`}>
+            <div className={`daily-robot daily-robot-${analysis.mood}`}>
               <div className="daily-robot-antenna" />
 
               <div className="daily-robot-head">
@@ -121,28 +263,33 @@ export function DailyRobotAssistant({ transactions }: DailyRobotAssistantProps) 
               <div className="flex items-center gap-2">
                 <Icon className={`h-4 w-4 ${config.accent}`} />
                 <p className={`text-sm font-semibold ${config.accent}`}>
-                  {config.title}
+                  {analysis.title}
                 </p>
               </div>
 
               <p className="text-sm text-muted-foreground">
-                {config.message}
+                {analysis.message}
+              </p>
+
+              <p className="text-xs text-muted-foreground">
+                Comparando com {analysis.previousLabel}: {formatCurrency(analysis.previousFlow.income)} em entradas e{' '}
+                {analysis.previousFlow.salesCount} {pluralVendas(analysis.previousFlow.salesCount)}.
               </p>
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-2 text-center sm:min-w-[320px]">
+          <div className="grid grid-cols-2 gap-2 text-center sm:grid-cols-4 lg:min-w-[440px]">
             <div className="rounded-lg bg-background/60 px-3 py-2">
               <p className="text-[11px] text-muted-foreground">Entradas hoje</p>
               <p className="text-sm font-semibold text-income">
-                {formatCurrency(todayFlow.income)}
+                {formatCurrency(analysis.todayFlow.income)}
               </p>
             </div>
 
             <div className="rounded-lg bg-background/60 px-3 py-2">
               <p className="text-[11px] text-muted-foreground">Saídas hoje</p>
               <p className="text-sm font-semibold text-expense">
-                {formatCurrency(todayFlow.expenses)}
+                {formatCurrency(analysis.todayFlow.expenses)}
               </p>
             </div>
 
@@ -150,10 +297,17 @@ export function DailyRobotAssistant({ transactions }: DailyRobotAssistantProps) 
               <p className="text-[11px] text-muted-foreground">Resultado</p>
               <p
                 className={`text-sm font-semibold ${
-                  todayFlow.balance >= 0 ? 'text-income' : 'text-expense'
+                  analysis.todayFlow.balance >= 0 ? 'text-income' : 'text-expense'
                 }`}
               >
-                {formatCurrency(todayFlow.balance)}
+                {formatCurrency(analysis.todayFlow.balance)}
+              </p>
+            </div>
+
+            <div className="rounded-lg bg-background/60 px-3 py-2">
+              <p className="text-[11px] text-muted-foreground">Vs dia ant.</p>
+              <p className={`text-sm font-semibold ${analysis.comparisonClass}`}>
+                {analysis.comparisonText}
               </p>
             </div>
           </div>
@@ -437,21 +591,35 @@ export function DailyRobotAssistant({ transactions }: DailyRobotAssistantProps) 
           }
 
           .daily-robot-happy,
-          .daily-robot-celebrate {
+          .daily-robot-celebrate,
+          .daily-robot-hot {
             color: rgb(16 185 129);
           }
 
-          .daily-robot-alert {
+          .daily-robot-alert,
+          .daily-robot-danger {
             color: rgb(239 68 68);
+          }
+
+          .daily-robot-alert {
             animation: dailyRobotAlert 1.35s ease-in-out infinite;
+          }
+
+          .daily-robot-danger {
+            animation: dailyRobotDanger 0.75s ease-in-out infinite;
           }
 
           .daily-robot-celebrate {
             animation: dailyRobotCelebrate 1.7s ease-in-out infinite;
           }
 
+          .daily-robot-hot {
+            animation: dailyRobotHot 1.05s ease-in-out infinite;
+          }
+
           .daily-robot-happy .daily-robot-mouth,
-          .daily-robot-celebrate .daily-robot-mouth {
+          .daily-robot-celebrate .daily-robot-mouth,
+          .daily-robot-hot .daily-robot-mouth {
             width: 15px;
             height: 7px;
             bottom: 4px;
@@ -467,12 +635,14 @@ export function DailyRobotAssistant({ transactions }: DailyRobotAssistantProps) 
             border-radius: 999px;
           }
 
-          .daily-robot-alert .daily-robot-eye {
+          .daily-robot-alert .daily-robot-eye,
+          .daily-robot-danger .daily-robot-eye {
             width: 7px;
             height: 13px;
           }
 
-          .daily-robot-alert .daily-robot-mouth {
+          .daily-robot-alert .daily-robot-mouth,
+          .daily-robot-danger .daily-robot-mouth {
             width: 10px;
             height: 5px;
             bottom: 4px;
@@ -482,7 +652,8 @@ export function DailyRobotAssistant({ transactions }: DailyRobotAssistantProps) 
             transform: translateX(-50%) rotate(180deg);
           }
 
-          .daily-robot-alert .daily-robot-visor::after {
+          .daily-robot-alert .daily-robot-visor::after,
+          .daily-robot-danger .daily-robot-visor::after {
             content: '';
             position: absolute;
             top: 6px;
@@ -495,13 +666,20 @@ export function DailyRobotAssistant({ transactions }: DailyRobotAssistantProps) 
             filter: drop-shadow(0 0 4px currentColor);
           }
 
-          .daily-robot-alert .daily-robot-light::before {
+          .daily-robot-alert .daily-robot-light::before,
+          .daily-robot-danger .daily-robot-light::before {
             transform: rotate(35deg);
           }
 
-          .daily-robot-alert .daily-robot-light::after {
+          .daily-robot-alert .daily-robot-light::after,
+          .daily-robot-danger .daily-robot-light::after {
             top: 7px;
             transform: rotate(135deg);
+          }
+
+          .daily-robot-hot .daily-robot-antenna::before,
+          .daily-robot-danger .daily-robot-antenna::before {
+            animation: dailyRobotPulseLight 0.8s ease-in-out infinite;
           }
 
           @keyframes dailyRobotFloat {
@@ -528,6 +706,24 @@ export function DailyRobotAssistant({ transactions }: DailyRobotAssistantProps) 
             }
           }
 
+          @keyframes dailyRobotHot {
+            0%, 100% {
+              transform: scale(calc(var(--robot-scale) + 0.02)) translateY(0) rotate(0deg);
+            }
+            20% {
+              transform: scale(calc(var(--robot-scale) + 0.06)) translateY(-6px) rotate(-6deg);
+            }
+            40% {
+              transform: scale(calc(var(--robot-scale) + 0.04)) translateY(-2px) rotate(5deg);
+            }
+            65% {
+              transform: scale(calc(var(--robot-scale) + 0.07)) translateY(-5px) rotate(-4deg);
+            }
+            82% {
+              transform: scale(calc(var(--robot-scale) + 0.04)) translateY(-1px) rotate(4deg);
+            }
+          }
+
           @keyframes dailyRobotAlert {
             0%, 100% {
               transform: scale(var(--robot-scale)) rotate(0deg);
@@ -543,6 +739,35 @@ export function DailyRobotAssistant({ transactions }: DailyRobotAssistantProps) 
             }
           }
 
+          @keyframes dailyRobotDanger {
+            0%, 100% {
+              transform: scale(var(--robot-scale)) translateX(0) rotate(0deg);
+            }
+            20% {
+              transform: scale(var(--robot-scale)) translateX(-2px) rotate(-4deg);
+            }
+            40% {
+              transform: scale(var(--robot-scale)) translateX(2px) rotate(4deg);
+            }
+            60% {
+              transform: scale(var(--robot-scale)) translateX(-2px) rotate(-3deg);
+            }
+            80% {
+              transform: scale(var(--robot-scale)) translateX(2px) rotate(3deg);
+            }
+          }
+
+          @keyframes dailyRobotPulseLight {
+            0%, 100% {
+              transform: scale(1);
+              opacity: 0.9;
+            }
+            50% {
+              transform: scale(1.28);
+              opacity: 1;
+            }
+          }
+
           @keyframes dailyRobotBlink {
             0%, 90%, 100% {
               transform: scaleY(1);
@@ -552,24 +777,24 @@ export function DailyRobotAssistant({ transactions }: DailyRobotAssistantProps) 
             }
           }
 
-@media (max-width: 640px) {
-  .daily-robot {
-    width: 70px;
-    height: 82px;
-    --robot-scale: 1.02;
-    margin-left: -2px;
-    margin-top: 2px;
-  }
+          @media (max-width: 640px) {
+            .daily-robot {
+              width: 70px;
+              height: 82px;
+              --robot-scale: 1.02;
+              margin-left: -2px;
+              margin-top: 2px;
+            }
 
-  .daily-robot::before,
-  .daily-robot::after {
-    bottom: 4px;
-  }
+            .daily-robot::before,
+            .daily-robot::after {
+              bottom: 4px;
+            }
 
-  .daily-robot-body {
-    bottom: 12px;
-  }
-}
+            .daily-robot-body {
+              bottom: 12px;
+            }
+          }
         `}</style>
       </CardContent>
     </Card>

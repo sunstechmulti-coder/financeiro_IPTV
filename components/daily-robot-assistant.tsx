@@ -13,6 +13,7 @@ interface DailyRobotAssistantProps {
 }
 
 type RobotMood = 'neutral' | 'happy' | 'celebrate' | 'hot' | 'alert' | 'danger'
+type DayStage = 'early' | 'afternoon' | 'late' | 'closed'
 
 interface DailyFlow {
   income: number
@@ -60,6 +61,22 @@ function formatDateKey(dateKey: string) {
   const [year, month, day] = dateKey.split('-')
 
   return `${day}/${month}/${year}`
+}
+
+function getDayStage(analysisDateKey: string): DayStage {
+  const now = new Date()
+  const todayKey = toDateKey(now)
+
+  if (analysisDateKey !== todayKey) {
+    return 'closed'
+  }
+
+  const hour = now.getHours()
+
+  if (hour < 12) return 'early'
+  if (hour < 18) return 'afternoon'
+
+  return 'late'
 }
 
 function getFlowByDate(transactions: Transaction[], dateKey: string): DailyFlow {
@@ -131,6 +148,12 @@ export function DailyRobotAssistant({ transactions, month, year }: DailyRobotAss
     const hasPreviousMovement = previousFlow.income > 0 || previousFlow.expenses > 0
 
     const previousLabel = formatDateKey(previousDateKey)
+    const dayStage = getDayStage(analysisDateKey)
+
+    const shouldWaitBeforeAlert =
+      dayStage === 'early' &&
+      !hasTodayMovement &&
+      previousFlow.income > 0
 
     let mood: RobotMood = 'neutral'
     let title = 'Observando o dia'
@@ -141,9 +164,19 @@ export function DailyRobotAssistant({ transactions, month, year }: DailyRobotAss
       title = 'Observando o dia'
       message = `Ainda não tenho movimento hoje e também não houve registro em ${previousLabel}.`
     } else if (!hasTodayMovement && previousFlow.income > 0) {
-      mood = 'danger'
-      title = 'Dia parado'
-      message = `Hoje ainda não teve entradas. No mesmo dia do mês anterior houve ${formatCurrency(previousFlow.income)} em ${previousFlow.salesCount} ${pluralVendas(previousFlow.salesCount)}.`
+      if (dayStage === 'early') {
+        mood = 'neutral'
+        title = 'Observando o dia'
+        message = `Ainda é cedo. No mesmo dia do mês anterior houve ${formatCurrency(previousFlow.income)} em ${previousFlow.salesCount} ${pluralVendas(previousFlow.salesCount)}. Vou acompanhar o movimento antes de acender o alerta.`
+      } else if (dayStage === 'afternoon') {
+        mood = 'alert'
+        title = 'Dia lento'
+        message = `Hoje ainda não teve entradas. No mesmo dia do mês anterior houve ${formatCurrency(previousFlow.income)} em ${previousFlow.salesCount} ${pluralVendas(previousFlow.salesCount)}. Ainda dá tempo de recuperar.`
+      } else {
+        mood = 'danger'
+        title = 'Dia parado'
+        message = `Hoje ainda não teve entradas. No mesmo dia do mês anterior houve ${formatCurrency(previousFlow.income)} em ${previousFlow.salesCount} ${pluralVendas(previousFlow.salesCount)}.`
+      }
     } else if (todayFlow.balance < 0) {
       mood = Math.abs(todayFlow.balance) >= Math.max(todayFlow.income, 1) ? 'danger' : 'alert'
       title = mood === 'danger' ? 'Alerta forte no caixa' : 'Atenção no fluxo'
@@ -181,16 +214,20 @@ export function DailyRobotAssistant({ transactions, month, year }: DailyRobotAss
       previousFlow,
       previousLabel,
       incomeDeltaPercent,
-      comparisonText: getComparisonText(
-        todayFlow.income,
-        previousFlow.income,
-        incomeDeltaPercent
-      ),
-      comparisonClass: getComparisonClass(
-        incomeDeltaPercent,
-        todayFlow.income,
-        previousFlow.income
-      ),
+      comparisonText: shouldWaitBeforeAlert
+        ? 'Aguardando'
+        : getComparisonText(
+            todayFlow.income,
+            previousFlow.income,
+            incomeDeltaPercent
+          ),
+      comparisonClass: shouldWaitBeforeAlert
+        ? 'text-yellow-500'
+        : getComparisonClass(
+            incomeDeltaPercent,
+            todayFlow.income,
+            previousFlow.income
+          ),
       mood,
       title,
       message,
@@ -272,9 +309,9 @@ export function DailyRobotAssistant({ transactions, month, year }: DailyRobotAss
               </p>
 
               <p className="text-xs text-muted-foreground">
-                Comparando com {analysis.previousLabel}: {formatCurrency(analysis.previousFlow.income)} em entradas e{' '}
-                {analysis.previousFlow.salesCount} {pluralVendas(analysis.previousFlow.salesCount)}.
-              </p>
+  Base mês anterior: {analysis.previousLabel.slice(0, 5)} • {formatCurrency(analysis.previousFlow.income)} •{' '}
+  {analysis.previousFlow.salesCount} {pluralVendas(analysis.previousFlow.salesCount)}
+</p>
             </div>
           </div>
 
@@ -306,8 +343,8 @@ export function DailyRobotAssistant({ transactions, month, year }: DailyRobotAss
 
             <div className="rounded-lg bg-background/60 px-3 py-2">
               <p className="text-[11px] text-muted-foreground">
-  Vs {analysis.previousLabel.slice(0, 5)}
-</p>
+                Vs {analysis.previousLabel.slice(0, 5)}
+              </p>
               <p className={`text-sm font-semibold ${analysis.comparisonClass}`}>
                 {analysis.comparisonText}
               </p>

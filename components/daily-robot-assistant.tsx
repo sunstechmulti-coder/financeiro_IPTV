@@ -186,26 +186,38 @@ export function DailyRobotAssistant({ transactions, month, year }: DailyRobotAss
       title = mood === 'hot' ? 'Dia acelerado' : 'Dia positivo'
       message = `Hoje já tem ${formatCurrency(todayFlow.income)} em entradas e ${todayFlow.salesCount} ${pluralVendas(todayFlow.salesCount)}. No mesmo dia do mês anterior não havia receita.`
     } else if (incomeDeltaPercent !== null) {
-      if (incomeDeltaPercent <= -50 || (salesDeltaPercent !== null && salesDeltaPercent <= -50)) {
+      const salesFellHard =
+        salesDeltaPercent !== null && salesDeltaPercent <= -50
+
+      const salesRoseHard =
+        salesDeltaPercent !== null && salesDeltaPercent >= 50
+
+      if (incomeDeltaPercent <= -50) {
         mood = 'danger'
         title = 'Queda forte no dia'
-        message = `Hoje está ${formatPercent(incomeDeltaPercent)} abaixo de ${previousLabel}. Foram ${todayFlow.salesCount} ${pluralVendas(todayFlow.salesCount)} hoje contra ${previousFlow.salesCount} no mês anterior.`
+        message = `Hoje está ${formatPercent(incomeDeltaPercent)} abaixo de ${previousLabel}. Foram ${todayFlow.salesCount} ${pluralVendas(todayFlow.salesCount)} hoje contra ${previousFlow.salesCount} ${pluralVendas(previousFlow.salesCount)} no mês anterior.`
       } else if (incomeDeltaPercent < -10) {
         mood = 'alert'
         title = 'Atenção no ritmo'
         message = `Hoje está ${formatPercent(incomeDeltaPercent)} abaixo do mesmo dia do mês anterior. Ainda dá para recuperar.`
-      } else if (incomeDeltaPercent >= 50 || (salesDeltaPercent !== null && salesDeltaPercent >= 50)) {
+      } else if (incomeDeltaPercent >= 50) {
         mood = 'hot'
         title = 'Dia muito forte'
-        message = `Hoje está ${formatPercent(incomeDeltaPercent)} acima de ${previousLabel}. O robô está vendo um ritmo bem mais forte.`
+        message = salesFellHard
+          ? `Hoje está ${formatPercent(incomeDeltaPercent)} acima de ${previousLabel}, mesmo com menos vendas. O ticket médio puxou o resultado.`
+          : `Hoje está ${formatPercent(incomeDeltaPercent)} acima de ${previousLabel}. O robô está vendo um ritmo bem mais forte.`
       } else if (incomeDeltaPercent > 10) {
         mood = todayFlow.salesCount >= 2 ? 'celebrate' : 'happy'
-        title = 'Dia melhor'
-        message = `Hoje está ${formatPercent(incomeDeltaPercent)} acima do mesmo dia do mês anterior.`
+        title = salesFellHard ? 'Receita acima, ticket maior' : 'Dia melhor'
+        message = salesFellHard
+          ? `Hoje está ${formatPercent(incomeDeltaPercent)} acima do mesmo dia do mês anterior, mesmo com ${todayFlow.salesCount} ${pluralVendas(todayFlow.salesCount)} contra ${previousFlow.salesCount} ${pluralVendas(previousFlow.salesCount)} no mês anterior.`
+          : `Hoje está ${formatPercent(incomeDeltaPercent)} acima do mesmo dia do mês anterior.`
       } else {
-        mood = 'neutral'
-        title = 'Ritmo estável'
-        message = `Hoje está parecido com ${previousLabel}. Diferença de ${formatPercent(incomeDeltaPercent)} nas entradas.`
+        mood = salesRoseHard ? 'happy' : 'neutral'
+        title = salesFellHard ? 'Receita estável' : 'Ritmo estável'
+        message = salesFellHard
+          ? 'A receita está próxima do mesmo dia do mês anterior, mas com menos vendas. O ticket médio está compensando.'
+          : `Hoje está parecido com ${previousLabel}. Diferença de ${formatPercent(incomeDeltaPercent)} nas entradas.`
       }
     }
 
@@ -275,6 +287,13 @@ export function DailyRobotAssistant({ transactions, month, year }: DailyRobotAss
 
   const Icon = config.icon
 
+  const chestBatteryLevel =
+    analysis.mood === 'danger' || analysis.mood === 'alert'
+      ? 'low'
+      : analysis.mood === 'neutral'
+        ? 'mid'
+        : 'full'
+
   return (
     <Card className={`overflow-hidden ${config.border} ${config.bg}`}>
       <CardContent className="pt-4">
@@ -292,7 +311,13 @@ export function DailyRobotAssistant({ transactions, month, year }: DailyRobotAss
               </div>
 
               <div className="daily-robot-body">
-                <div className="daily-robot-light" />
+                <div
+                  className={`daily-robot-light daily-robot-battery daily-robot-battery-${chestBatteryLevel}`}
+                >
+                  <span className="daily-robot-battery-bar" />
+                  <span className="daily-robot-battery-bar" />
+                  <span className="daily-robot-battery-bar" />
+                </div>
               </div>
             </div>
 
@@ -309,9 +334,9 @@ export function DailyRobotAssistant({ transactions, month, year }: DailyRobotAss
               </p>
 
               <p className="text-xs text-muted-foreground">
-  Base mês anterior: {analysis.previousLabel.slice(0, 5)} • {formatCurrency(analysis.previousFlow.income)} •{' '}
-  {analysis.previousFlow.salesCount} {pluralVendas(analysis.previousFlow.salesCount)}
-</p>
+                Base mês anterior: {analysis.previousLabel.slice(0, 5)} • {formatCurrency(analysis.previousFlow.income)} •{' '}
+                {analysis.previousFlow.salesCount} {pluralVendas(analysis.previousFlow.salesCount)}
+              </p>
             </div>
           </div>
 
@@ -586,43 +611,60 @@ export function DailyRobotAssistant({ transactions, month, year }: DailyRobotAss
 
           .daily-robot-light {
             position: relative;
-            width: 15px;
-            height: 15px;
-            border-radius: 999px;
-            background:
-              linear-gradient(180deg, rgba(0,0,0,0.66), rgba(0,0,0,0.9));
+            width: 20px;
+            height: 12px;
+            border-radius: 4px;
+            background: linear-gradient(180deg, rgba(0,0,0,0.72), rgba(0,0,0,0.92));
             border: 1px solid color-mix(in srgb, currentColor 48%, rgba(255,255,255,0.18));
             box-shadow:
-              inset 0 1px 1px rgba(255,255,255,0.12),
+              inset 0 1px 1px rgba(255,255,255,0.10),
               0 0 10px color-mix(in srgb, currentColor 42%, transparent);
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            padding: 2px 3px;
             z-index: 4;
           }
 
           .daily-robot-light::before {
-            content: '';
-            position: absolute;
-            left: 3px;
-            top: 7px;
-            width: 9px;
-            height: 2px;
-            border-radius: 999px;
-            background: currentColor;
-            transform: rotate(-35deg);
-            transform-origin: left center;
-            box-shadow: 0 0 5px currentColor;
+            content: none;
           }
 
           .daily-robot-light::after {
             content: '';
             position: absolute;
-            right: 3px;
-            top: 5px;
-            width: 5px;
-            height: 5px;
-            border-top: 2px solid currentColor;
-            border-right: 2px solid currentColor;
-            transform: rotate(45deg);
-            filter: drop-shadow(0 0 4px currentColor);
+            right: -4px;
+            top: 50%;
+            width: 3px;
+            height: 6px;
+            transform: translateY(-50%);
+            border-radius: 0 2px 2px 0;
+            background: color-mix(in srgb, currentColor 75%, rgba(255,255,255,0.15));
+            box-shadow: 0 0 4px color-mix(in srgb, currentColor 45%, transparent);
+          }
+
+          .daily-robot-battery-bar {
+            flex: 1;
+            height: 100%;
+            border-radius: 2px;
+            background: currentColor;
+            opacity: 0.18;
+            box-shadow: 0 0 5px color-mix(in srgb, currentColor 55%, transparent);
+          }
+
+          .daily-robot-battery-low .daily-robot-battery-bar:nth-child(1) {
+            opacity: 1;
+          }
+
+          .daily-robot-battery-mid .daily-robot-battery-bar:nth-child(1),
+          .daily-robot-battery-mid .daily-robot-battery-bar:nth-child(2) {
+            opacity: 1;
+          }
+
+          .daily-robot-battery-full .daily-robot-battery-bar:nth-child(1),
+          .daily-robot-battery-full .daily-robot-battery-bar:nth-child(2),
+          .daily-robot-battery-full .daily-robot-battery-bar:nth-child(3) {
+            opacity: 1;
           }
 
           .daily-robot-neutral {
@@ -703,17 +745,6 @@ export function DailyRobotAssistant({ transactions, month, year }: DailyRobotAss
             border-radius: 999px 999px 0 0;
             opacity: 0.85;
             filter: drop-shadow(0 0 4px currentColor);
-          }
-
-          .daily-robot-alert .daily-robot-light::before,
-          .daily-robot-danger .daily-robot-light::before {
-            transform: rotate(35deg);
-          }
-
-          .daily-robot-alert .daily-robot-light::after,
-          .daily-robot-danger .daily-robot-light::after {
-            top: 7px;
-            transform: rotate(135deg);
           }
 
           .daily-robot-hot .daily-robot-antenna::before,

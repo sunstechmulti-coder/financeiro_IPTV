@@ -13,6 +13,7 @@ import {
   Clock,
   ChevronLeft,
   ChevronRight,
+  MessageCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SummaryCards } from '@/components/summary-cards'
@@ -30,6 +31,7 @@ import { useSupabaseData } from '@/hooks/use-supabase-data'
 import { createClient } from '@/lib/supabase/client'
 
 const ADMIN_EMAIL = 'admin1@sunstech.com'
+const ADMIN_WHATSAPP = process.env.NEXT_PUBLIC_ADMIN_WHATSAPP || '5541984119131'
 
 interface Subscription {
   id: string
@@ -55,6 +57,22 @@ const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: 'analytics', label: 'Analytics', icon: BarChart2 },
   { id: 'configuracoes', label: 'Configurações', icon: Settings },
 ]
+
+function formatDateBR(date: string | null | undefined) {
+  if (!date) return 'data desconhecida'
+
+  const parsedDate = new Date(date)
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return 'data desconhecida'
+  }
+
+  return parsedDate.toLocaleDateString('pt-BR')
+}
+
+function onlyNumbers(value: string) {
+  return value.replace(/\D/g, '')
+}
 
 export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
   const [isAdmin, setIsAdmin] = useState(false)
@@ -125,6 +143,17 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
     )
   }
 
+  const shouldShowRenewButton = () => {
+    if (!subscription) return false
+    if (userEmail === ADMIN_EMAIL) return false
+    if (!subscription.first_access_at) return false
+    if (subscription.is_expired) return false
+
+    const daysRemaining = subscription.days_remaining ?? 0
+
+    return daysRemaining > 0 && daysRemaining <= 7
+  }
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       setIsAdmin(data.user?.email === ADMIN_EMAIL)
@@ -143,6 +172,24 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
+  }
+
+  const handleRenewWhatsapp = () => {
+    const adminWhatsapp = onlyNumbers(ADMIN_WHATSAPP)
+
+    if (!adminWhatsapp) {
+      window.alert('WhatsApp do administrador não configurado.')
+      return
+    }
+
+    const expiresAt = formatDateBR(subscription?.expires_at)
+    const daysRemaining = subscription?.days_remaining ?? 0
+
+    const message = encodeURIComponent(
+      `Olá, quero renovar meu acesso ao painel Cash Flow.\n\nConta: ${userEmail || 'não informado'}\nVencimento: ${expiresAt}\nDias restantes: ${daysRemaining} dia(s)`
+    )
+
+    window.open(`https://wa.me/${adminWhatsapp}?text=${message}`, '_blank', 'noopener,noreferrer')
   }
 
   const {
@@ -288,6 +335,19 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
                 </span>
 
                 {getSubscriptionBadge()}
+
+                {shouldShowRenewButton() && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleRenewWhatsapp}
+                    className="h-6 rounded-full bg-green-600 px-2 text-[11px] font-semibold text-white hover:bg-green-700"
+                    title="Renovar acesso pelo WhatsApp"
+                  >
+                    <MessageCircle className="h-3.5 w-3.5 md:mr-1" />
+                    <span className="hidden md:inline">Renovar</span>
+                  </Button>
+                )}
 
                 <Button
                   variant="ghost"

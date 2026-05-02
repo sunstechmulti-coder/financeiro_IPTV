@@ -1,13 +1,15 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Wallet, Mail, ArrowRight, Lock, Eye, EyeOff, AlertTriangle } from 'lucide-react'
+import { Mail, ArrowRight, Lock, Eye, EyeOff, AlertTriangle, MessageCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { createClient } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
+
+const ADMIN_WHATSAPP = process.env.NEXT_PUBLIC_ADMIN_WHATSAPP || '5541984119131'
 
 interface Subscription {
   id: string
@@ -25,6 +27,22 @@ interface AuthGateProps {
   children: React.ReactNode
   onUserChange?: (user: User | null) => void
   onSubscriptionChange?: (subscription: Subscription | null) => void
+}
+
+function formatDateBR(date: string | null | undefined) {
+  if (!date) return 'data desconhecida'
+
+  const parsedDate = new Date(date)
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return 'data desconhecida'
+  }
+
+  return parsedDate.toLocaleDateString('pt-BR')
+}
+
+function onlyNumbers(value: string) {
+  return value.replace(/\D/g, '')
 }
 
 export function AuthGate({ children, onUserChange, onSubscriptionChange }: AuthGateProps) {
@@ -171,6 +189,24 @@ export function AuthGate({ children, onUserChange, onSubscriptionChange }: AuthG
     onUserChange?.(null)
   }
 
+  const handleRenewWhatsapp = () => {
+    const adminWhatsapp = onlyNumbers(ADMIN_WHATSAPP)
+
+    if (!adminWhatsapp) {
+      window.alert('WhatsApp do administrador não configurado.')
+      return
+    }
+
+    const userEmail = user?.email || 'não informado'
+    const expiresAt = formatDateBR(subscription?.expires_at)
+
+    const message = encodeURIComponent(
+      `Olá, quero renovar meu acesso ao painel Cash Flow.\n\nConta: ${userEmail}\nVencimento: ${expiresAt}`
+    )
+
+    window.open(`https://wa.me/${adminWhatsapp}?text=${message}`, '_blank', 'noopener,noreferrer')
+  }
+
   // Loading skeleton
   if (!mounted) {
     return (
@@ -195,13 +231,22 @@ export function AuthGate({ children, onUserChange, onSubscriptionChange }: AuthG
             </div>
             <CardTitle className="text-2xl">Assinatura Expirada</CardTitle>
             <CardDescription>
-              Sua assinatura expirou em {subscription.expires_at ? new Date(subscription.expires_at).toLocaleDateString('pt-BR') : 'data desconhecida'}.
+              Sua assinatura expirou em {formatDateBR(subscription.expires_at)}.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-center text-muted-foreground text-sm">
               Entre em contato com o administrador para renovar seu acesso ao sistema.
             </p>
+
+            <Button
+              className="w-full bg-green-600 text-white hover:bg-green-700"
+              onClick={handleRenewWhatsapp}
+            >
+              <MessageCircle className="mr-2 h-4 w-4" />
+              Renovar pelo WhatsApp
+            </Button>
+
             <Button variant="outline" className="w-full" onClick={handleLogout}>
               Sair da conta
             </Button>

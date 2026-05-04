@@ -73,8 +73,8 @@ function getDayStage(analysisDateKey: string): DayStage {
 
   const hour = now.getHours()
 
-  if (hour < 12) return 'early'
-  if (hour < 18) return 'afternoon'
+  if (hour < 13) return 'early'
+  if (hour < 16) return 'afternoon'
 
   return 'late'
 }
@@ -155,6 +155,12 @@ export function DailyRobotAssistant({ transactions, month, year }: DailyRobotAss
       !hasTodayMovement &&
       previousFlow.income > 0
 
+    const shouldHoldStrongDropAlert =
+      (dayStage === 'early' || dayStage === 'afternoon') &&
+      hasTodayMovement &&
+      incomeDeltaPercent !== null &&
+      incomeDeltaPercent <= -50
+
     let mood: RobotMood = 'neutral'
     let title = 'Observando o dia'
     let message = 'Ainda estou acompanhando o movimento de hoje.'
@@ -193,9 +199,19 @@ export function DailyRobotAssistant({ transactions, month, year }: DailyRobotAss
         salesDeltaPercent !== null && salesDeltaPercent >= 50
 
       if (incomeDeltaPercent <= -50) {
-        mood = 'danger'
-        title = 'Queda forte no dia'
-        message = `Hoje está ${formatPercent(incomeDeltaPercent)} abaixo de ${previousLabel}. Foram ${todayFlow.salesCount} ${pluralVendas(todayFlow.salesCount)} hoje contra ${previousFlow.salesCount} ${pluralVendas(previousFlow.salesCount)} no mês anterior.`
+        if (dayStage === 'early') {
+          mood = 'alert'
+          title = 'Dia ainda em aquecimento'
+          message = `Hoje está ${formatPercent(incomeDeltaPercent)} abaixo de ${previousLabel}, mas o fluxo principal costuma começar após as 13h. Foram ${todayFlow.salesCount} ${pluralVendas(todayFlow.salesCount)} hoje contra ${previousFlow.salesCount} ${pluralVendas(previousFlow.salesCount)} no mês anterior.`
+        } else if (dayStage === 'afternoon') {
+          mood = 'alert'
+          title = 'Abaixo do ritmo'
+          message = `Hoje está ${formatPercent(incomeDeltaPercent)} abaixo de ${previousLabel}. O fluxo já começou, mas ainda está no período inicial; vou manter como atenção antes de acender alerta forte.`
+        } else {
+          mood = 'danger'
+          title = 'Queda forte no dia'
+          message = `Hoje está ${formatPercent(incomeDeltaPercent)} abaixo de ${previousLabel}. Foram ${todayFlow.salesCount} ${pluralVendas(todayFlow.salesCount)} hoje contra ${previousFlow.salesCount} ${pluralVendas(previousFlow.salesCount)} no mês anterior.`
+        }
       } else if (incomeDeltaPercent < -10) {
         mood = 'alert'
         title = 'Atenção no ritmo'
@@ -233,7 +249,7 @@ export function DailyRobotAssistant({ transactions, month, year }: DailyRobotAss
             previousFlow.income,
             incomeDeltaPercent
           ),
-      comparisonClass: shouldWaitBeforeAlert
+      comparisonClass: shouldWaitBeforeAlert || shouldHoldStrongDropAlert
         ? 'text-yellow-500'
         : getComparisonClass(
             incomeDeltaPercent,
@@ -272,9 +288,9 @@ export function DailyRobotAssistant({ transactions, month, year }: DailyRobotAss
       icon: TrendingUp,
     },
     alert: {
-      accent: 'text-red-500',
-      border: 'border-red-500/30',
-      bg: 'bg-red-500/10',
+      accent: 'text-yellow-500',
+      border: 'border-yellow-500/30',
+      bg: 'bg-yellow-500/10',
       icon: AlertTriangle,
     },
     danger: {
@@ -288,9 +304,9 @@ export function DailyRobotAssistant({ transactions, month, year }: DailyRobotAss
   const Icon = config.icon
 
   const chestBatteryLevel =
-    analysis.mood === 'danger' || analysis.mood === 'alert'
+    analysis.mood === 'danger'
       ? 'low'
-      : analysis.mood === 'neutral'
+      : analysis.mood === 'neutral' || analysis.mood === 'alert'
         ? 'mid'
         : 'full'
 
@@ -677,13 +693,13 @@ export function DailyRobotAssistant({ transactions, month, year }: DailyRobotAss
             color: rgb(16 185 129);
           }
 
-          .daily-robot-alert,
-          .daily-robot-danger {
-            color: rgb(239 68 68);
+          .daily-robot-alert {
+            color: rgb(234 179 8);
+            animation: dailyRobotAlert 1.35s ease-in-out infinite;
           }
 
-          .daily-robot-alert {
-            animation: dailyRobotAlert 1.35s ease-in-out infinite;
+          .daily-robot-danger {
+            color: rgb(239 68 68);
           }
 
           .daily-robot-danger {

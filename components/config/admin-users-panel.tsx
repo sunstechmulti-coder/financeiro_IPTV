@@ -148,6 +148,53 @@ const CREDIT_TYPE_LABELS: Record<string, string> = {
   system_unblock: 'Desbloqueio automático',
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000
+const RESELLER_ACTIVE_DAYS = 60
+const RESELLER_BLOCK_DAYS = 90
+
+function addDaysFromDate(dateStr: string | null | undefined, days: number) {
+  if (!dateStr) return null
+
+  const date = new Date(dateStr)
+
+  if (Number.isNaN(date.getTime())) return null
+
+  return new Date(date.getTime() + days * DAY_MS)
+}
+
+function getDaysUntil(date: Date | null) {
+  if (!date) return null
+
+  const now = new Date()
+  const days = Math.ceil((date.getTime() - now.getTime()) / DAY_MS)
+
+  return Math.max(0, days)
+}
+
+function formatDateOnlyFromDate(date: Date | null) {
+  if (!date) return '—'
+
+  return date.toLocaleDateString('pt-BR')
+}
+
+function getResellerRechargeDeadline(wallet: ResellerWallet | null | undefined) {
+  if (!wallet) return null
+
+  return addDaysFromDate(wallet.last_recharge_at || wallet.created_at, RESELLER_ACTIVE_DAYS)
+}
+
+function getResellerGraceDeadline(wallet: ResellerWallet | null | undefined) {
+  if (!wallet) return null
+
+  if (wallet.grace_until) {
+    const graceDate = new Date(wallet.grace_until)
+
+    if (!Number.isNaN(graceDate.getTime())) return graceDate
+  }
+
+  return addDaysFromDate(wallet.last_recharge_at || wallet.created_at, RESELLER_BLOCK_DAYS)
+}
+
 function getUserRole(u: AdminUser): UserRole {
   if (u.email === 'admin1@sunstech.com') return 'admin'
   return u.role || u.profile?.role || 'user'
@@ -490,9 +537,50 @@ export function AdminUsersPanel() {
     )
   }
 
+  const getResellerRechargeBadge = (u: AdminUser) => {
+    if (getUserRole(u) !== 'reseller') return null
+
+    const wallet = u.reseller_wallet
+
+    if (!wallet) return null
+
+    if (wallet.status === 'blocked') {
+      return (
+        <Badge variant="destructive" className="text-xs shrink-0">
+          Revenda bloqueada
+        </Badge>
+      )
+    }
+
+    if (wallet.status === 'grace') {
+      const graceDaysRemaining = getDaysUntil(getResellerGraceDeadline(wallet))
+
+      return (
+        <Badge className="text-xs shrink-0 bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
+          <Clock className="mr-1 h-3 w-3" />
+          Tolerância {graceDaysRemaining ?? 0}d
+        </Badge>
+      )
+    }
+
+    const rechargeDaysRemaining = getDaysUntil(getResellerRechargeDeadline(wallet))
+
+    return (
+      <Badge className="text-xs shrink-0 bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
+        <Clock className="mr-1 h-3 w-3" />
+        {typeof rechargeDaysRemaining === 'number'
+          ? `Recarga em ${rechargeDaysRemaining}d`
+          : 'Recarga pendente'}
+      </Badge>
+    )
+  }
+
   const getSubscriptionBadge = (u: AdminUser) => {
-    // Admin não mostra badge de subscription
-    if (getUserRole(u) === 'admin') {
+    const role = getUserRole(u)
+
+    // Admin e revendedor não mostram badge de assinatura antiga.
+    // Para revendedor, o controle correto é a carteira/recarga de créditos.
+    if (role === 'admin' || role === 'reseller') {
       return null
     }
 
@@ -744,11 +832,12 @@ export function AdminUsersPanel() {
                         <span className="text-sm font-medium truncate">{u.email}</span>
                         {getRoleBadge(u)}
                         {getResellerWalletBadge(u)}
+                        {getResellerRechargeBadge(u)}
                         {getSubscriptionBadge(u)}
                       </div>
                       <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
                         <span>Criado em {formatDate(u.created_at)}</span>
-                        {role !== 'admin' && u.subscription?.expires_at && (
+                        {role === 'user' && u.subscription?.expires_at && (
                           <span className="flex items-center gap-1">
                             <Calendar className="h-3 w-3" />
                             Expira: {new Date(u.subscription.expires_at).toLocaleDateString('pt-BR')}
@@ -758,6 +847,12 @@ export function AdminUsersPanel() {
                           <span className="flex items-center gap-1">
                             <Coins className="h-3 w-3" />
                             Última recarga: {new Date(u.reseller_wallet.last_recharge_at).toLocaleDateString('pt-BR')}
+                          </span>
+                        )}
+                        {role === 'reseller' && u.reseller_wallet && (
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            Próxima recarga: {formatDateOnlyFromDate(getResellerRechargeDeadline(u.reseller_wallet))}
                           </span>
                         )}
                         {u.last_sign_in_at && (
@@ -783,15 +878,17 @@ export function AdminUsersPanel() {
                             </Button>
                           )}
 
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => openEditPlanDialog(u)}
-                            className="h-8"
-                          >
-                            <Clock className="h-3.5 w-3.5 mr-1.5" />
-                            <span className="hidden sm:inline">Plano</span>
-                          </Button>
+                          {role === 'user' && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openEditPlanDialog(u)}
+                              className="h-8"
+                            >
+                              <Clock className="h-3.5 w-3.5 mr-1.5" />
+                              <span className="hidden sm:inline">Plano</span>
+                            </Button>
+                          )}
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
                               <Button
@@ -854,7 +951,7 @@ export function AdminUsersPanel() {
           </DialogHeader>
 
           <div className="space-y-4 py-2">
-            <div className="grid gap-3 rounded-md border bg-muted/30 p-3 text-sm sm:grid-cols-3">
+            <div className="grid gap-3 rounded-md border bg-muted/30 p-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
               <div>
                 <p className="text-xs text-muted-foreground">Saldo atual</p>
                 <p className="font-semibold text-foreground">
@@ -873,6 +970,13 @@ export function AdminUsersPanel() {
                 <p className="text-xs text-muted-foreground">Última recarga</p>
                 <p className="font-semibold text-foreground">
                   {formatDate(creditWallet?.last_recharge_at || creditsUser?.reseller_wallet?.last_recharge_at)}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-muted-foreground">Próxima recarga</p>
+                <p className="font-semibold text-foreground">
+                  {formatDateOnlyFromDate(getResellerRechargeDeadline(creditWallet || creditsUser?.reseller_wallet))}
                 </p>
               </div>
             </div>

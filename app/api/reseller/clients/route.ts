@@ -353,13 +353,33 @@ export async function POST(req: NextRequest) {
 
   const wallet = await getResellerWalletStatus(resellerId)
 
-  if (!isAdmin && wallet?.status !== 'active') {
+  if (!wallet) {
+    return NextResponse.json(
+      { error: 'Carteira do revendedor não encontrada.' },
+      { status: 404 }
+    )
+  }
+
+  if (!isAdmin && wallet.status !== 'active') {
     return NextResponse.json(
       {
         error:
-          wallet?.status === 'grace'
+          wallet.status === 'grace'
             ? 'Sua revenda está em período de tolerância. Você pode usar o painel como usuário comum, mas não pode criar clientes.'
             : 'Sua revenda está bloqueada. Regularize sua recarga para criar clientes.',
+      },
+      { status: 403 }
+    )
+  }
+
+  // Regra comercial:
+  // Revendedor precisa ter pelo menos 1 crédito para liberar novo teste de 30 dias.
+  // Não desconta crédito aqui; o crédito será usado apenas na renovação.
+  if (!isAdmin && Number(wallet.balance || 0) <= 0) {
+    return NextResponse.json(
+      {
+        error:
+          'Você precisa ter créditos disponíveis para criar um novo cliente teste. Faça uma recarga com o administrador.',
       },
       { status: 403 }
     )

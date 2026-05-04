@@ -22,6 +22,7 @@ import {
   History,
   PlusCircle,
   MinusCircle,
+  ArrowRightLeft,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -114,6 +115,17 @@ interface ResellerSettings {
   updated_at: string
 }
 
+interface AdminLinkedProfile {
+  id: string
+  email: string | null
+  role: UserRole
+  is_active: boolean
+}
+
+interface AdminResellerOption extends AdminLinkedProfile {
+  reseller_wallet?: ResellerWallet | null
+}
+
 interface AdminUser {
   id: string
   email: string | undefined
@@ -122,6 +134,8 @@ interface AdminUser {
   subscription: Subscription | null
   role?: UserRole
   profile?: UserProfile | null
+  created_by_profile?: AdminLinkedProfile | null
+  reseller_profile?: AdminLinkedProfile | null
   reseller_wallet?: ResellerWallet | null
 }
 
@@ -218,6 +232,7 @@ function getUserRole(u: AdminUser): UserRole {
 
 export function AdminUsersPanel() {
   const [users, setUsers] = useState<AdminUser[]>([])
+  const [resellers, setResellers] = useState<AdminResellerOption[]>([])
   const [loadingUsers, setLoadingUsers] = useState(true)
   const [error, setError] = useState('')
 
@@ -273,6 +288,14 @@ export function AdminUsersPanel() {
   const [roleError, setRoleError] = useState('')
   const [roleSuccess, setRoleSuccess] = useState('')
 
+  // Migrar cliente entre revendedores
+  const [migrateDialogOpen, setMigrateDialogOpen] = useState(false)
+  const [migratingUser, setMigratingUser] = useState<AdminUser | null>(null)
+  const [targetResellerId, setTargetResellerId] = useState('')
+  const [migratingClient, setMigratingClient] = useState(false)
+  const [migrationError, setMigrationError] = useState('')
+  const [migrationSuccess, setMigrationSuccess] = useState('')
+
   const resellerRechargeDeadlineDays = Math.max(
     1,
     Number(rechargeDeadlineDays) || DEFAULT_RESELLER_ACTIVE_DAYS
@@ -293,7 +316,8 @@ export function AdminUsersPanel() {
         setError(json.error || 'Erro ao carregar usuários.')
         return
       }
-      setUsers(json.users)
+      setUsers(json.users || [])
+      setResellers(json.resellers || [])
     } catch {
       setError('Erro ao conectar ao servidor.')
     } finally {
@@ -466,6 +490,69 @@ export function AdminUsersPanel() {
       setRoleError('Erro ao conectar ao servidor.')
     } finally {
       setRoleChanging(false)
+    }
+  }
+
+  const openMigrateDialog = (user: AdminUser) => {
+    setMigratingUser(user)
+    setTargetResellerId(user.profile?.reseller_id || '')
+    setMigrationError('')
+    setMigrationSuccess('')
+    setMigrateDialogOpen(true)
+  }
+
+  const resetMigrateDialog = () => {
+    setMigratingUser(null)
+    setTargetResellerId('')
+    setMigrationError('')
+    setMigrationSuccess('')
+  }
+
+  const handleMigrateClient = async () => {
+    if (!migratingUser) return
+
+    if (!targetResellerId) {
+      setMigrationError('Selecione o revendedor de destino.')
+      return
+    }
+
+    if (targetResellerId === migratingUser.profile?.reseller_id) {
+      setMigrationError('Este cliente já está vinculado a este revendedor.')
+      return
+    }
+
+    setMigratingClient(true)
+    setMigrationError('')
+    setMigrationSuccess('')
+
+    try {
+      const res = await fetch('/api/admin/client-reseller', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId: migratingUser.id,
+          resellerId: targetResellerId,
+        }),
+      })
+
+      const json = await res.json()
+
+      if (!res.ok) {
+        setMigrationError(json.error || 'Erro ao migrar cliente.')
+        return
+      }
+
+      setMigrationSuccess(json.message || 'Cliente migrado com sucesso.')
+      await fetchUsers()
+
+      setTimeout(() => {
+        setMigrateDialogOpen(false)
+        resetMigrateDialog()
+      }, 1500)
+    } catch {
+      setMigrationError('Erro ao conectar ao servidor.')
+    } finally {
+      setMigratingClient(false)
     }
   }
 
@@ -1105,6 +1192,18 @@ export function AdminUsersPanel() {
                       </div>
                       <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
                         <span>Criado em {formatDate(u.created_at)}</span>
+                        {role === 'user' && u.reseller_profile?.email && (
+                          <span className="flex items-center gap-1">
+                            <Store className="h-3 w-3" />
+                            Revenda: {u.reseller_profile.email}
+                          </span>
+                        )}
+                        {role === 'user' && u.created_by_profile?.email && !u.reseller_profile?.email && (
+                          <span className="flex items-center gap-1">
+                            <User className="h-3 w-3" />
+                            Criado por: {u.created_by_profile.email}
+                          </span>
+                        )}
                         {role === 'user' && u.subscription?.expires_at && (
                           <span className="flex items-center gap-1">
                             <Calendar className="h-3 w-3" />
@@ -1159,6 +1258,19 @@ export function AdminUsersPanel() {
                                 <Store className="h-3.5 w-3.5 mr-1.5" />
                               )}
                               <span className="hidden sm:inline">Tipo</span>
+                            </Button>
+                          )}
+
+                          {role === 'user' && u.profile?.reseller_id && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openMigrateDialog(u)}
+                              className="h-8"
+                              title="Migrar cliente para outro revendedor"
+                            >
+                              <ArrowRightLeft className="h-3.5 w-3.5 mr-1.5" />
+                              <span className="hidden sm:inline">Migrar</span>
                             </Button>
                           )}
 
@@ -1296,6 +1408,100 @@ export function AdminUsersPanel() {
                 </>
               ) : (
                 'Salvar Tipo'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog de migração de cliente entre revendedores */}
+      <Dialog
+        open={migrateDialogOpen}
+        onOpenChange={(open) => {
+          setMigrateDialogOpen(open)
+          if (!open) resetMigrateDialog()
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Migrar Cliente</DialogTitle>
+            <DialogDescription>
+              Transfira o cliente <strong>{migratingUser?.email}</strong> para outro revendedor.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="rounded-md bg-muted/50 p-3 text-sm text-muted-foreground">
+              <p>
+                Revendedor atual:{' '}
+                <strong>{migratingUser?.reseller_profile?.email || 'Não identificado'}</strong>
+              </p>
+              <p className="mt-1">
+                A migração altera apenas o responsável da revenda. O plano, vencimento,
+                senha e histórico do cliente não são alterados.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="target-reseller">Novo revendedor responsável</Label>
+              <Select value={targetResellerId} onValueChange={setTargetResellerId}>
+                <SelectTrigger id="target-reseller">
+                  <SelectValue placeholder="Selecione o revendedor" />
+                </SelectTrigger>
+                <SelectContent>
+                  {resellers
+                    .filter((reseller) => reseller.id !== migratingUser?.profile?.reseller_id)
+                    .map((reseller) => (
+                      <SelectItem key={reseller.id} value={reseller.id}>
+                        {reseller.email || reseller.id}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              {resellers.length <= 1 && (
+                <p className="text-xs text-muted-foreground">
+                  É necessário ter outro revendedor ativo para migrar este cliente.
+                </p>
+              )}
+            </div>
+
+            {migrationError && (
+              <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                {migrationError}
+              </div>
+            )}
+
+            {migrationSuccess && (
+              <div className="flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600">
+                <Check className="h-4 w-4 shrink-0" />
+                {migrationSuccess}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setMigrateDialogOpen(false)}
+              disabled={migratingClient}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleMigrateClient}
+              disabled={migratingClient || !targetResellerId}
+            >
+              {migratingClient ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Migrando...
+                </>
+              ) : (
+                <>
+                  <ArrowRightLeft className="mr-2 h-4 w-4" />
+                  Migrar Cliente
+                </>
               )}
             </Button>
           </DialogFooter>

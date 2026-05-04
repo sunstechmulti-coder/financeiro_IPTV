@@ -8,7 +8,6 @@ import {
   Settings,
   Loader2,
   BarChart2,
-  Mail,
   LogOut,
   Clock,
   ChevronLeft,
@@ -108,8 +107,6 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
   const resellerStatus = subscription?.reseller_status || null
   const resellerAccessMode = subscription?.access_mode || null
 
-  // Revendedor ativo vê "Meus Clientes".
-  // Em tolerância, ele usa o painel como usuário comum.
   const isReseller =
     isResellerProfile &&
     resellerAccessMode !== 'user_only' &&
@@ -124,27 +121,19 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
   const tabs = useMemo(() => {
     if (!isReseller) return BASE_TABS
 
-    return [
-      BASE_TABS[0],
-      RESELLER_TAB,
-      ...BASE_TABS.slice(1),
-    ]
+    return [BASE_TABS[0], RESELLER_TAB, ...BASE_TABS.slice(1)]
   }, [isReseller])
 
   const getSubscriptionBadge = () => {
     if (!subscription) return null
-
     if (userEmail === ADMIN_EMAIL) return null
-
-    // Para revendedor, o badge principal não deve ser "Teste 30d".
-    // O controle correto é por recarga de créditos.
     if (isResellerProfile) return null
 
     if (!subscription.first_access_at) {
       return (
-        <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 text-xs">
-          <Clock className="h-3 w-3" />
-          <span className="hidden sm:inline">Aguardando ativação</span>
+        <div className="flex items-center gap-1.5 rounded-full bg-blue-500/15 px-3 py-1 text-xs font-medium text-blue-400 ring-1 ring-blue-500/20">
+          <Clock className="h-3.5 w-3.5 shrink-0" />
+          <span className="whitespace-nowrap">Aguardando ativação</span>
         </div>
       )
     }
@@ -153,44 +142,55 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
 
     if (subscription.is_expired || daysRemaining <= 0) {
       return (
-        <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-destructive/20 text-destructive text-xs">
-          <Clock className="h-3 w-3" />
-          <span>Expirado</span>
+        <div className="flex items-center gap-1.5 rounded-full bg-destructive/15 px-3 py-1 text-xs font-medium text-destructive ring-1 ring-destructive/20">
+          <Clock className="h-3.5 w-3.5 shrink-0" />
+          <span className="whitespace-nowrap">Expirado</span>
         </div>
       )
     }
 
     if (daysRemaining <= 7) {
       return (
-        <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 text-xs">
-          <Clock className="h-3 w-3" />
-          <span>{daysRemaining}d</span>
+        <div className="flex items-center gap-1.5 rounded-full bg-orange-500/15 px-3 py-1 text-xs font-medium text-orange-400 ring-1 ring-orange-500/20">
+          <Clock className="h-3.5 w-3.5 shrink-0" />
+          <span className="whitespace-nowrap">{daysRemaining}d</span>
         </div>
       )
     }
 
     if (daysRemaining <= 15) {
       return (
-        <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 text-xs">
-          <Clock className="h-3 w-3" />
-          <span>{daysRemaining}d</span>
+        <div className="flex items-center gap-1.5 rounded-full bg-yellow-500/15 px-3 py-1 text-xs font-medium text-yellow-400 ring-1 ring-yellow-500/20">
+          <Clock className="h-3.5 w-3.5 shrink-0" />
+          <span className="whitespace-nowrap">{daysRemaining}d</span>
         </div>
       )
     }
 
     if (subscription.plan_type === 'trial') {
       return (
-        <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 text-xs">
-          <Clock className="h-3 w-3" />
-          <span className="hidden sm:inline">Teste</span> {daysRemaining}d
+        <div className="flex items-center gap-1.5 rounded-full bg-blue-500/15 px-3 py-1 text-xs font-medium text-blue-400 ring-1 ring-blue-500/20">
+          <Clock className="h-3.5 w-3.5 shrink-0" />
+          <span className="whitespace-nowrap">Teste {daysRemaining}d</span>
         </div>
       )
     }
 
     return (
-      <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-xs">
-        <Clock className="h-3 w-3" />
-        <span>{daysRemaining}d</span>
+      <div className="flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-medium text-emerald-400 ring-1 ring-emerald-500/20">
+        <Clock className="h-3.5 w-3.5 shrink-0" />
+        <span className="whitespace-nowrap">{daysRemaining}d</span>
+      </div>
+    )
+  }
+
+  const getResellerRoleBadge = () => {
+    if (!isResellerProfile) return null
+
+    return (
+      <div className="flex items-center gap-1.5 rounded-full bg-purple-500/15 px-3 py-1 text-xs font-medium text-purple-400 ring-1 ring-purple-500/20">
+        <Store className="h-3.5 w-3.5 shrink-0" />
+        <span className="whitespace-nowrap">Revendedor</span>
       </div>
     )
   }
@@ -203,20 +203,20 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
 
       return (
         <div
-          className="flex items-center gap-1 rounded-full bg-yellow-500/15 px-2 py-0.5 text-xs font-normal text-yellow-400"
+          className="flex items-center gap-1.5 rounded-full bg-yellow-500/15 px-3 py-1 text-xs font-medium text-yellow-400 ring-1 ring-yellow-500/20"
           title="Modo tolerância: funções de revenda bloqueadas até nova recarga."
         >
-          <AlertTriangle className="h-3 w-3" />
-          Tolerância {days}d
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          <span className="whitespace-nowrap">Tolerância {days}d</span>
         </div>
       )
     }
 
     if (resellerStatus === 'blocked' || resellerAccessMode === 'blocked') {
       return (
-        <div className="flex items-center gap-1 rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-normal text-destructive">
-          <AlertTriangle className="h-3 w-3" />
-          Bloqueado
+        <div className="flex items-center gap-1.5 rounded-full bg-destructive/15 px-3 py-1 text-xs font-medium text-destructive ring-1 ring-destructive/20">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          <span className="whitespace-nowrap">Bloqueado</span>
         </div>
       )
     }
@@ -225,11 +225,13 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
 
     return (
       <div
-        className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-normal text-emerald-400"
+        className="flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-medium text-emerald-400 ring-1 ring-emerald-500/20"
         title="Prazo para nova recarga de créditos da revenda."
       >
-        <Clock className="h-3 w-3" />
-        {typeof days === 'number' ? `Recarga em ${days}d` : 'Revenda ativa'}
+        <Clock className="h-3.5 w-3.5 shrink-0" />
+        <span className="whitespace-nowrap">
+          {typeof days === 'number' ? `Recarga em ${days}d` : 'Revenda ativa'}
+        </span>
       </div>
     )
   }
@@ -242,7 +244,6 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
     if (subscription.is_expired) return false
 
     const daysRemaining = subscription.days_remaining ?? 0
-
     return daysRemaining > 0 && daysRemaining <= 7
   }
 
@@ -351,8 +352,7 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
   } = useSupabaseData()
 
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [editingTransaction, setEditingTransaction] =
-    useState<Transaction | null>(null)
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [activeTab, setActiveTab] = useState<Tab>('dashboard')
 
   useEffect(() => {
@@ -364,9 +364,7 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
   const selectedMonthLabel = useMemo(() => {
     const monthName = new Date(selectedYear, selectedMonth, 1).toLocaleDateString(
       'pt-BR',
-      {
-        month: 'long',
-      }
+      { month: 'long' }
     )
 
     return `${monthName.charAt(0).toUpperCase()}${monthName.slice(1)} ${selectedYear}`
@@ -447,68 +445,62 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       <header className="sticky top-0 z-40 border-b bg-card/80 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-          <div className="flex items-center gap-2 font-semibold">
+        <div className="mx-auto flex min-h-14 w-full max-w-7xl items-center justify-between gap-2 px-3 py-2 pr-20 sm:px-4 lg:pr-4">
+          <div className="flex min-w-0 flex-1 items-center gap-2 font-semibold">
             <img
               src="/logo-icon.png"
               alt="Cash Flow"
-              className="h-9 w-9 object-contain"
+              className="h-8 w-8 shrink-0 object-contain sm:h-9 sm:w-9"
             />
-            <span>Cash Flow</span>
 
-            {userEmail && (
-              <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-border">
-                <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            <span className="hidden shrink-0 min-[380px]:inline">Cash Flow</span>
 
-                <span className="text-xs text-muted-foreground font-normal truncate max-w-[140px] hidden lg:inline">
-                  {userEmail}
-                </span>
+            {subscription && (
+              <div className="flex min-w-0 items-center gap-1 border-l border-border pl-2 sm:ml-2 sm:gap-1.5">
+                <div className="hidden items-center gap-1.5 sm:flex">
+                  {getSubscriptionBadge()}
+                  {getResellerRoleBadge()}
+                  {getResellerAccessBadge()}
 
-                {getSubscriptionBadge()}
+                  {shouldShowRenewButton() && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleRenewWhatsapp}
+                      className="h-7 rounded-full bg-green-600 px-2.5 text-[11px] font-semibold text-white hover:bg-green-700"
+                      title="Renovar acesso pelo WhatsApp"
+                    >
+                      <MessageCircle className="mr-1 h-3.5 w-3.5" />
+                      <span>Renovar</span>
+                    </Button>
+                  )}
+                </div>
 
-                {isResellerProfile && (
-                  <div className="hidden items-center gap-1 rounded-full bg-purple-500/15 px-2 py-0.5 text-xs font-normal text-purple-400 sm:flex">
-                    <Store className="h-3 w-3" />
-                    Revendedor
-                  </div>
-                )}
-
-                {getResellerAccessBadge()}
-
-                {shouldShowRenewButton() && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={handleRenewWhatsapp}
-                    className="h-6 rounded-full bg-green-600 px-2 text-[11px] font-semibold text-white hover:bg-green-700"
-                    title="Renovar acesso pelo WhatsApp"
-                  >
-                    <MessageCircle className="h-3.5 w-3.5 md:mr-1" />
-                    <span className="hidden md:inline">Renovar</span>
-                  </Button>
-                )}
+                <div className="flex items-center gap-1 sm:hidden">
+                  {isResellerProfile ? getResellerAccessBadge() : getSubscriptionBadge()}
+                </div>
 
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={handleLogout}
-                  className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                  className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
                   title="Sair"
                 >
-                  <LogOut className="h-3.5 w-3.5" />
+                  <LogOut className="h-4 w-4" />
                   <span className="sr-only">Sair</span>
                 </Button>
               </div>
             )}
           </div>
 
-          <nav className="hidden sm:flex items-center gap-1">
+          <nav className="hidden shrink-0 items-center gap-1 lg:flex">
             {tabs.map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
                 onClick={() => setActiveTab(id)}
                 className={cn(
-                  'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-colors',
+                  'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm transition-colors xl:px-3',
                   activeTab === id
                     ? 'bg-primary/10 text-primary font-medium'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
@@ -527,7 +519,7 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
                 setEditingTransaction(null)
                 setDialogOpen(true)
               }}
-              className="hidden sm:flex"
+              className="hidden shrink-0 lg:flex"
               data-testid="new-transaction-btn"
             >
               <Plus className="mr-1 h-4 w-4" />
@@ -536,7 +528,7 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
           )}
         </div>
 
-        <div className="sm:hidden flex border-t overflow-x-auto">
+        <div className="flex border-t overflow-x-auto lg:hidden">
           {tabs.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
@@ -549,20 +541,20 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
               )}
             >
               <Icon className="h-4 w-4" />
-              <span className="hidden xs:inline">{label}</span>
+              <span className="hidden min-[430px]:inline">{label}</span>
             </button>
           ))}
         </div>
 
         {activeTab !== 'clientes' && (
-          <div className="sm:hidden fixed bottom-10 right-4 z-30">
+          <div className="fixed right-4 top-2 z-50 lg:hidden">
             <Button
               size="sm"
               onClick={() => {
                 setEditingTransaction(null)
                 setDialogOpen(true)
               }}
-              className="rounded-full h-12 w-12 p-0 shadow-lg"
+              className="h-12 w-12 rounded-full p-0 shadow-lg shadow-primary/20"
               data-testid="new-transaction-btn-mobile"
             >
               <Plus className="h-5 w-5" />
@@ -579,7 +571,7 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
       )}
 
       <main className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-6xl space-y-6 p-4 pb-24">
+        <div className="mx-auto max-w-6xl space-y-6 p-4 pb-32 lg:pb-24">
           {activeTab === 'dashboard' && (
             <>
               <QuickEntry
@@ -629,9 +621,7 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
             </>
           )}
 
-          {activeTab === 'clientes' && isReseller && (
-            <ResellerClientsPanel />
-          )}
+          {activeTab === 'clientes' && isReseller && <ResellerClientsPanel />}
 
           {activeTab === 'transacoes' && (
             <TransactionsTable
@@ -682,7 +672,7 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
         </div>
       </main>
 
-      <footer className="border-t border-border/40 bg-background/80 px-4 py-4 pb-20 text-center text-[11px] leading-relaxed text-muted-foreground sm:pb-4">
+      <footer className="border-t border-border/40 bg-background/80 px-4 py-4 pb-28 text-center text-[11px] leading-relaxed text-muted-foreground lg:pb-4">
         <p>Versão 1.0.0</p>
         <p>© 2026 Cash Flow.</p>
         <p>Desenvolvido por Sun&apos;s Tech.</p>

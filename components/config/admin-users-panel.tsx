@@ -19,6 +19,9 @@ import {
   User,
   ShieldCheck,
   Coins,
+  History,
+  PlusCircle,
+  MinusCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -55,6 +58,7 @@ import {
 
 type UserRole = 'admin' | 'reseller' | 'user'
 type ResellerStatus = 'active' | 'grace' | 'blocked'
+type CreditAction = 'add' | 'remove'
 
 interface Subscription {
   id: string
@@ -86,6 +90,19 @@ interface ResellerWallet {
   status: ResellerStatus
   created_at: string
   updated_at: string
+}
+
+interface ResellerCreditLedgerEntry {
+  id: string
+  reseller_id: string
+  type: string
+  amount: number
+  balance_after: number
+  target_user_id: string | null
+  created_by: string | null
+  note: string | null
+  metadata: Record<string, unknown>
+  created_at: string
 }
 
 interface AdminUser {
@@ -121,6 +138,16 @@ const STATUS_LABELS: Record<ResellerStatus, string> = {
   blocked: 'Bloqueado',
 }
 
+const CREDIT_TYPE_LABELS: Record<string, string> = {
+  admin_add: 'Crédito adicionado',
+  admin_remove: 'Crédito removido',
+  renewal: 'Renovação de cliente',
+  manual_adjustment: 'Ajuste manual',
+  refund: 'Estorno',
+  system_block: 'Bloqueio automático',
+  system_unblock: 'Desbloqueio automático',
+}
+
 function getUserRole(u: AdminUser): UserRole {
   if (u.email === 'admin1@sunstech.com') return 'admin'
   return u.role || u.profile?.role || 'user'
@@ -151,6 +178,20 @@ export function AdminUsersPanel() {
   const [customExpirationDate, setCustomExpirationDate] = useState('')
   const [updatingPlan, setUpdatingPlan] = useState(false)
   const [planUpdateSuccess, setPlanUpdateSuccess] = useState('')
+
+
+  // Créditos do revendedor
+  const [creditsDialogOpen, setCreditsDialogOpen] = useState(false)
+  const [creditsUser, setCreditsUser] = useState<AdminUser | null>(null)
+  const [creditAction, setCreditAction] = useState<CreditAction>('add')
+  const [creditAmount, setCreditAmount] = useState('')
+  const [creditNote, setCreditNote] = useState('')
+  const [creditWallet, setCreditWallet] = useState<ResellerWallet | null>(null)
+  const [creditLedger, setCreditLedger] = useState<ResellerCreditLedgerEntry[]>([])
+  const [creditLoading, setCreditLoading] = useState(false)
+  const [creditHistoryLoading, setCreditHistoryLoading] = useState(false)
+  const [creditError, setCreditError] = useState('')
+  const [creditSuccess, setCreditSuccess] = useState('')
 
   const fetchUsers = useCallback(async () => {
     setLoadingUsers(true)
@@ -282,6 +323,103 @@ export function AdminUsersPanel() {
     }
     setEditPlanDialogOpen(true)
     setPlanUpdateSuccess('')
+  }
+
+
+  const fetchResellerCredits = async (resellerId: string) => {
+    setCreditHistoryLoading(true)
+    setCreditError('')
+
+    try {
+      const res = await fetch(`/api/admin/reseller-credits?resellerId=${encodeURIComponent(resellerId)}`)
+      const json = await res.json()
+
+      if (!res.ok) {
+        setCreditError(json.error || 'Erro ao carregar créditos do revendedor.')
+        return
+      }
+
+      setCreditWallet(json.wallet || null)
+      setCreditLedger(json.ledger || [])
+    } catch {
+      setCreditError('Erro ao conectar ao servidor de créditos.')
+    } finally {
+      setCreditHistoryLoading(false)
+    }
+  }
+
+  const openCreditsDialog = async (user: AdminUser) => {
+    setCreditsUser(user)
+    setCreditWallet(user.reseller_wallet || null)
+    setCreditLedger([])
+    setCreditAction('add')
+    setCreditAmount('')
+    setCreditNote('')
+    setCreditError('')
+    setCreditSuccess('')
+    setCreditsDialogOpen(true)
+    await fetchResellerCredits(user.id)
+  }
+
+  const resetCreditsDialog = () => {
+    setCreditsUser(null)
+    setCreditWallet(null)
+    setCreditLedger([])
+    setCreditAction('add')
+    setCreditAmount('')
+    setCreditNote('')
+    setCreditError('')
+    setCreditSuccess('')
+  }
+
+  const handleSaveCredits = async () => {
+    if (!creditsUser) return
+
+    const amount = Number(creditAmount)
+
+    if (!Number.isFinite(amount) || !Number.isInteger(amount) || amount <= 0) {
+      setCreditError('Informe uma quantidade inteira maior que zero.')
+      return
+    }
+
+    setCreditLoading(true)
+    setCreditError('')
+    setCreditSuccess('')
+
+    try {
+      const res = await fetch('/api/admin/reseller-credits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          resellerId: creditsUser.id,
+          action: creditAction,
+          amount,
+          note: creditNote,
+        }),
+      })
+
+      const json = await res.json()
+
+      if (!res.ok) {
+        setCreditError(json.error || 'Erro ao movimentar créditos.')
+        return
+      }
+
+      setCreditWallet(json.wallet || null)
+      setCreditSuccess(
+        creditAction === 'add'
+          ? `${amount} crédito(s) adicionados com sucesso.`
+          : `${amount} crédito(s) removidos com sucesso.`
+      )
+      setCreditAmount('')
+      setCreditNote('')
+      await fetchUsers()
+      await fetchResellerCredits(creditsUser.id)
+    } catch {
+      setCreditError('Erro ao conectar ao servidor de créditos.')
+    } finally {
+      setCreditLoading(false)
+    }
   }
 
   const formatDate = (dateStr: string | undefined | null) => {
@@ -633,6 +771,18 @@ export function AdminUsersPanel() {
                     <div className="flex items-center gap-2 shrink-0 ml-4">
                       {role !== 'admin' && (
                         <>
+                          {role === 'reseller' && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openCreditsDialog(u)}
+                              className="h-8"
+                            >
+                              <Coins className="h-3.5 w-3.5 mr-1.5" />
+                              <span className="hidden sm:inline">Créditos</span>
+                            </Button>
+                          )}
+
                           <Button
                             variant="outline"
                             size="sm"
@@ -686,6 +836,192 @@ export function AdminUsersPanel() {
           )}
         </CardContent>
       </Card>
+
+      {/* Dialog de créditos do revendedor */}
+      <Dialog
+        open={creditsDialogOpen}
+        onOpenChange={(open) => {
+          setCreditsDialogOpen(open)
+          if (!open) resetCreditsDialog()
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Créditos do Revendedor</DialogTitle>
+            <DialogDescription>
+              Adicione ou remova créditos de <strong>{creditsUser?.email}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="grid gap-3 rounded-md border bg-muted/30 p-3 text-sm sm:grid-cols-3">
+              <div>
+                <p className="text-xs text-muted-foreground">Saldo atual</p>
+                <p className="font-semibold text-foreground">
+                  {creditWallet?.balance ?? creditsUser?.reseller_wallet?.balance ?? 0} crédito(s)
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-muted-foreground">Status</p>
+                <p className="font-semibold text-foreground">
+                  {STATUS_LABELS[(creditWallet?.status || creditsUser?.reseller_wallet?.status || 'active') as ResellerStatus]}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-muted-foreground">Última recarga</p>
+                <p className="font-semibold text-foreground">
+                  {formatDate(creditWallet?.last_recharge_at || creditsUser?.reseller_wallet?.last_recharge_at)}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-[160px_1fr]">
+              <div className="space-y-2">
+                <Label htmlFor="credit-action">Ação</Label>
+                <Select value={creditAction} onValueChange={(value) => setCreditAction(value as CreditAction)}>
+                  <SelectTrigger id="credit-action">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="add">
+                      <span className="flex items-center gap-2">
+                        <PlusCircle className="h-3.5 w-3.5" />
+                        Adicionar
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="remove">
+                      <span className="flex items-center gap-2">
+                        <MinusCircle className="h-3.5 w-3.5" />
+                        Remover
+                      </span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="credit-amount">Quantidade de créditos</Label>
+                <Input
+                  id="credit-amount"
+                  type="number"
+                  min="1"
+                  step="1"
+                  placeholder="Ex.: 10"
+                  value={creditAmount}
+                  onChange={(e) => setCreditAmount(e.target.value)}
+                  disabled={creditLoading}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="credit-note">Observação opcional</Label>
+              <Input
+                id="credit-note"
+                placeholder="Ex.: Recarga Pix, ajuste manual, remoção por correção..."
+                value={creditNote}
+                onChange={(e) => setCreditNote(e.target.value)}
+                disabled={creditLoading}
+              />
+            </div>
+
+            {creditError && (
+              <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                {creditError}
+              </div>
+            )}
+
+            {creditSuccess && (
+              <div className="flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600">
+                <Check className="h-4 w-4 shrink-0" />
+                {creditSuccess}
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="flex items-center gap-2 text-sm font-medium">
+                  <History className="h-4 w-4" />
+                  Histórico recente
+                </p>
+                {creditHistoryLoading && (
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                )}
+              </div>
+
+              <div className="max-h-56 overflow-y-auto rounded-md border">
+                {creditHistoryLoading ? (
+                  <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
+                    Carregando histórico...
+                  </div>
+                ) : creditLedger.length === 0 ? (
+                  <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
+                    Nenhuma movimentação registrada ainda.
+                  </div>
+                ) : (
+                  <div className="divide-y">
+                    {creditLedger.map((entry) => (
+                      <div key={entry.id} className="flex items-start justify-between gap-3 px-3 py-2 text-sm">
+                        <div className="min-w-0">
+                          <p className="font-medium">
+                            {CREDIT_TYPE_LABELS[entry.type] || entry.type}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatDate(entry.created_at)}
+                            {entry.note ? ` · ${entry.note}` : ''}
+                          </p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className={entry.amount >= 0 ? 'font-semibold text-emerald-500' : 'font-semibold text-destructive'}>
+                            {entry.amount > 0 ? '+' : ''}{entry.amount}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Saldo: {entry.balance_after}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setCreditsDialogOpen(false)}
+              disabled={creditLoading}
+            >
+              Fechar
+            </Button>
+            <Button
+              onClick={handleSaveCredits}
+              disabled={creditLoading || !creditAmount}
+            >
+              {creditLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Salvando...
+                </>
+              ) : creditAction === 'add' ? (
+                <>
+                  <PlusCircle className="mr-2 h-4 w-4" />
+                  Adicionar Créditos
+                </>
+              ) : (
+                <>
+                  <MinusCircle className="mr-2 h-4 w-4" />
+                  Remover Créditos
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog de edição de plano */}
       <Dialog

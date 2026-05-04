@@ -51,7 +51,18 @@ function getSafeRole(value: unknown): UserRole {
   return 'user'
 }
 
-// GET /api/admin/users — lista todos os usuários com subscriptions, perfil e carteira de revendedor
+function toPublicProfile(profile: UserProfile | undefined | null) {
+  if (!profile) return null
+
+  return {
+    id: profile.id,
+    email: profile.email,
+    role: profile.role,
+    is_active: profile.is_active,
+  }
+}
+
+// GET /api/admin/users — lista todos os usuários com subscriptions, perfil, carteira e vínculo de revenda
 export async function GET() {
   const user = await getSessionUser()
   if (!user || user.email !== ADMIN_EMAIL) {
@@ -79,8 +90,10 @@ export async function GET() {
     .from('user_profiles')
     .select('id, email, role, created_by, reseller_id, is_active')
 
+  const typedProfiles = (profiles || []) as UserProfile[]
+
   const profileMap = new Map(
-    ((profiles || []) as UserProfile[]).map((profile) => [profile.id, profile])
+    typedProfiles.map((profile) => [profile.id, profile])
   )
 
   // Buscar carteiras dos revendedores
@@ -95,10 +108,35 @@ export async function GET() {
     ])
   )
 
+  const resellers = typedProfiles
+    .filter((profile) => profile.role === 'reseller' && profile.is_active)
+    .map((profile) => ({
+      ...toPublicProfile(profile),
+      reseller_wallet: walletMap.get(profile.id) || null,
+    }))
+    .sort((a, b) => String(a.email || '').localeCompare(String(b.email || '')))
+
   const users = data.users.map((u) => {
     const profile = profileMap.get(u.id)
     const fallbackRole: UserRole = u.email === ADMIN_EMAIL ? 'admin' : 'user'
     const role = profile?.role || fallbackRole
+
+    const normalizedProfile: UserProfile = profile || {
+      id: u.id,
+      email: u.email || null,
+      role,
+      created_by: null,
+      reseller_id: null,
+      is_active: true,
+    }
+
+    const createdByProfile = normalizedProfile.created_by
+      ? profileMap.get(normalizedProfile.created_by)
+      : null
+
+    const resellerProfile = normalizedProfile.reseller_id
+      ? profileMap.get(normalizedProfile.reseller_id)
+      : null
 
     return {
       id: u.id,
@@ -106,20 +144,15 @@ export async function GET() {
       created_at: u.created_at,
       last_sign_in_at: u.last_sign_in_at,
       role,
-      profile: profile || {
-        id: u.id,
-        email: u.email || null,
-        role,
-        created_by: null,
-        reseller_id: null,
-        is_active: true,
-      },
+      profile: normalizedProfile,
+      created_by_profile: toPublicProfile(createdByProfile),
+      reseller_profile: toPublicProfile(resellerProfile),
       reseller_wallet: walletMap.get(u.id) || null,
       subscription: subscriptionMap.get(u.id) || null,
     }
   })
 
-  return NextResponse.json({ users })
+  return NextResponse.json({ users, resellers })
 }
 
 // POST /api/admin/users — cria um novo usuário comum ou revendedor

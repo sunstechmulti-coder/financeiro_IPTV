@@ -7,12 +7,16 @@ const ADMIN_EMAIL = 'admin1@sunstech.com'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const TRIAL_DAYS = 30
-const RESELLER_ACTIVE_DAYS = 60
-const RESELLER_GRACE_DAYS = 30
-const RESELLER_BLOCK_DAYS = RESELLER_ACTIVE_DAYS + RESELLER_GRACE_DAYS
+const DEFAULT_RESELLER_ACTIVE_DAYS = 60
+const DEFAULT_RESELLER_GRACE_DAYS = 30
 
 type UserRole = 'admin' | 'reseller' | 'user'
 type ResellerStatus = 'active' | 'grace' | 'blocked'
+
+interface ResellerSettings {
+  recharge_deadline_days: number
+  grace_days: number
+}
 
 async function getSessionUser() {
   const cookieStore = await cookies()
@@ -75,6 +79,35 @@ function getSubscriptionStatus(subscription: any) {
   }
 }
 
+async function getResellerSettings(
+  admin: ReturnType<typeof createAdminClient>
+): Promise<ResellerSettings> {
+  const fallback = {
+    recharge_deadline_days: DEFAULT_RESELLER_ACTIVE_DAYS,
+    grace_days: DEFAULT_RESELLER_GRACE_DAYS,
+  }
+
+  const { data } = await admin
+    .from('reseller_settings')
+    .select('recharge_deadline_days, grace_days')
+    .eq('id', 'default')
+    .single()
+
+  const rechargeDeadlineDays = Number(data?.recharge_deadline_days)
+  const graceDays = Number(data?.grace_days)
+
+  return {
+    recharge_deadline_days:
+      Number.isFinite(rechargeDeadlineDays) && rechargeDeadlineDays > 0
+        ? rechargeDeadlineDays
+        : fallback.recharge_deadline_days,
+    grace_days:
+      Number.isFinite(graceDays) && graceDays >= 0
+        ? graceDays
+        : fallback.grace_days,
+  }
+}
+
 async function getOrCreateProfile(
   admin: ReturnType<typeof createAdminClient>,
   user: any
@@ -105,24 +138,34 @@ async function getOrCreateProfile(
   return newProfile
 }
 
-function calculateResellerStatus(wallet: any, now = new Date()) {
+function calculateResellerStatus(
+  wallet: any,
+  settings: ResellerSettings,
+  now = new Date()
+) {
+  const activeDays = settings.recharge_deadline_days
+  const graceDays = settings.grace_days
+  const blockDays = activeDays + graceDays
+
   const rawBaseDate = wallet?.last_recharge_at || wallet?.created_at
   const baseDate = rawBaseDate ? new Date(rawBaseDate) : now
 
   if (Number.isNaN(baseDate.getTime())) {
-    const fallbackDeadline = addDays(now, RESELLER_ACTIVE_DAYS)
+    const fallbackDeadline = addDays(now, activeDays)
 
     return {
       status: 'active' as ResellerStatus,
       rechargeDeadlineAt: fallbackDeadline,
       graceUntil: null as Date | null,
-      daysUntilRechargeDeadline: RESELLER_ACTIVE_DAYS,
+      daysUntilRechargeDeadline: activeDays,
       graceDaysRemaining: 0,
+      activeDays,
+      graceDays,
     }
   }
 
-  const rechargeDeadlineAt = addDays(baseDate, RESELLER_ACTIVE_DAYS)
-  const blockAt = addDays(baseDate, RESELLER_BLOCK_DAYS)
+  const rechargeDeadlineAt = addDays(baseDate, activeDays)
+  const blockAt = addDays(baseDate, blockDays)
 
   if (now.getTime() <= rechargeDeadlineAt.getTime()) {
     return {
@@ -131,6 +174,8 @@ function calculateResellerStatus(wallet: any, now = new Date()) {
       graceUntil: null as Date | null,
       daysUntilRechargeDeadline: getDaysRemaining(rechargeDeadlineAt, now),
       graceDaysRemaining: 0,
+      activeDays,
+      graceDays,
     }
   }
 
@@ -141,6 +186,8 @@ function calculateResellerStatus(wallet: any, now = new Date()) {
       graceUntil: blockAt,
       daysUntilRechargeDeadline: 0,
       graceDaysRemaining: getDaysRemaining(blockAt, now),
+      activeDays,
+      graceDays,
     }
   }
 
@@ -150,12 +197,15 @@ function calculateResellerStatus(wallet: any, now = new Date()) {
     graceUntil: blockAt,
     daysUntilRechargeDeadline: 0,
     graceDaysRemaining: 0,
+    activeDays,
+    graceDays,
   }
 }
 
 async function getOrCreateAndSyncResellerWallet(
   admin: ReturnType<typeof createAdminClient>,
-  resellerId: string
+  resellerId: string,
+  settings: ResellerSettings
 ) {
   let { data: wallet } = await admin
     .from('reseller_wallets')
@@ -179,7 +229,7 @@ async function getOrCreateAndSyncResellerWallet(
 
   if (!wallet) return null
 
-  const statusInfo = calculateResellerStatus(wallet)
+  const statusInfo = calculateResellerStatus(wallet, settings)
   const graceUntilIso = statusInfo.graceUntil
     ? statusInfo.graceUntil.toISOString()
     : null
@@ -224,6 +274,8 @@ function buildResellerExtraFields(
       reseller_grace_days_remaining: null,
       reseller_grace_until: null,
       reseller_recharge_deadline_at: null,
+      reseller_recharge_deadline_days: null,
+      reseller_grace_days: null,
     }
   }
 
@@ -238,6 +290,8 @@ function buildResellerExtraFields(
       resellerAccess.statusInfo.graceUntil?.toISOString() || null,
     reseller_recharge_deadline_at:
       resellerAccess.statusInfo.rechargeDeadlineAt.toISOString(),
+    reseller_recharge_deadline_days: resellerAccess.statusInfo.activeDays,
+    reseller_grace_days: resellerAccess.statusInfo.graceDays,
   }
 }
 
@@ -283,12 +337,18 @@ export async function GET() {
   const profile = await getOrCreateProfile(admin, user)
   const userRole: UserRole = (profile?.role as UserRole) || 'user'
 
+  const resellerSettings = await getResellerSettings(admin)
+
   let resellerAccess:
     | Awaited<ReturnType<typeof getOrCreateAndSyncResellerWallet>>
     | null = null
 
   if (userRole === 'reseller') {
-    resellerAccess = await getOrCreateAndSyncResellerWallet(admin, user.id)
+    resellerAccess = await getOrCreateAndSyncResellerWallet(
+      admin,
+      user.id,
+      resellerSettings
+    )
   }
 
   const resellerStatus = resellerAccess?.statusInfo.status || null

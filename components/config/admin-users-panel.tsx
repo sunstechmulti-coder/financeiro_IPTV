@@ -15,6 +15,10 @@ import {
   RefreshCw,
   Calendar,
   Clock,
+  Store,
+  User,
+  ShieldCheck,
+  Coins,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -49,6 +53,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
+type UserRole = 'admin' | 'reseller' | 'user'
+type ResellerStatus = 'active' | 'grace' | 'blocked'
+
 interface Subscription {
   id: string
   user_id: string
@@ -59,12 +66,37 @@ interface Subscription {
   is_active: boolean
 }
 
+interface UserProfile {
+  id: string
+  email: string | null
+  role: UserRole
+  created_by: string | null
+  reseller_id: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+interface ResellerWallet {
+  id: string
+  reseller_id: string
+  balance: number
+  last_recharge_at: string | null
+  grace_until: string | null
+  status: ResellerStatus
+  created_at: string
+  updated_at: string
+}
+
 interface AdminUser {
   id: string
   email: string | undefined
   created_at: string
   last_sign_in_at: string | undefined
   subscription: Subscription | null
+  role?: UserRole
+  profile?: UserProfile | null
+  reseller_wallet?: ResellerWallet | null
 }
 
 const PLAN_LABELS: Record<string, string> = {
@@ -77,6 +109,23 @@ const PLAN_LABELS: Record<string, string> = {
   custom: 'Personalizado',
 }
 
+const ROLE_LABELS: Record<UserRole, string> = {
+  admin: 'Admin',
+  reseller: 'Revendedor',
+  user: 'Usuário',
+}
+
+const STATUS_LABELS: Record<ResellerStatus, string> = {
+  active: 'Ativo',
+  grace: 'Tolerância',
+  blocked: 'Bloqueado',
+}
+
+function getUserRole(u: AdminUser): UserRole {
+  if (u.email === 'admin1@sunstech.com') return 'admin'
+  return u.role || u.profile?.role || 'user'
+}
+
 export function AdminUsersPanel() {
   const [users, setUsers] = useState<AdminUser[]>([])
   const [loadingUsers, setLoadingUsers] = useState(true)
@@ -86,6 +135,7 @@ export function AdminUsersPanel() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [newEmail, setNewEmail] = useState('')
   const [newPassword, setNewPassword] = useState('')
+  const [newRole, setNewRole] = useState<UserRole>('user')
   const [showPassword, setShowPassword] = useState(false)
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState('')
@@ -134,16 +184,21 @@ export function AdminUsersPanel() {
       const res = await fetch('/api/admin/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: newEmail, password: newPassword }),
+        body: JSON.stringify({
+          email: newEmail,
+          password: newPassword,
+          role: newRole,
+        }),
       })
       const json = await res.json()
       if (!res.ok) {
         setCreateError(json.error || 'Erro ao criar usuário.')
         return
       }
-      setCreateSuccess(`Usuário ${json.user.email} criado com sucesso!`)
+      setCreateSuccess(`${ROLE_LABELS[newRole]} ${json.user.email} criado com sucesso!`)
       setNewEmail('')
       setNewPassword('')
+      setNewRole('user')
       await fetchUsers()
       setTimeout(() => {
         setDialogOpen(false)
@@ -229,7 +284,7 @@ export function AdminUsersPanel() {
     setPlanUpdateSuccess('')
   }
 
-  const formatDate = (dateStr: string | undefined) => {
+  const formatDate = (dateStr: string | undefined | null) => {
     if (!dateStr) return '—'
     return new Date(dateStr).toLocaleDateString('pt-BR', {
       day: '2-digit',
@@ -240,14 +295,71 @@ export function AdminUsersPanel() {
     })
   }
 
+  const getRoleBadge = (u: AdminUser) => {
+    const role = getUserRole(u)
+
+    if (role === 'admin') {
+      return (
+        <Badge variant="secondary" className="text-xs shrink-0">
+          <ShieldCheck className="mr-1 h-3 w-3" />
+          Admin
+        </Badge>
+      )
+    }
+
+    if (role === 'reseller') {
+      return (
+        <Badge className="text-xs shrink-0 bg-purple-500/20 text-purple-400 border-purple-500/30">
+          <Store className="mr-1 h-3 w-3" />
+          Revendedor
+        </Badge>
+      )
+    }
+
+    return (
+      <Badge variant="outline" className="text-xs shrink-0">
+        <User className="mr-1 h-3 w-3" />
+        Usuário
+      </Badge>
+    )
+  }
+
+  const getResellerWalletBadge = (u: AdminUser) => {
+    if (getUserRole(u) !== 'reseller') return null
+
+    const wallet = u.reseller_wallet
+
+    if (!wallet) {
+      return (
+        <Badge variant="outline" className="text-xs border-orange-500/40 text-orange-400">
+          Sem carteira
+        </Badge>
+      )
+    }
+
+    const statusClass =
+      wallet.status === 'blocked'
+        ? 'bg-destructive/20 text-destructive border-destructive/30'
+        : wallet.status === 'grace'
+          ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+          : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+
+    return (
+      <Badge className={`text-xs shrink-0 ${statusClass}`}>
+        <Coins className="mr-1 h-3 w-3" />
+        {wallet.balance} créditos · {STATUS_LABELS[wallet.status]}
+      </Badge>
+    )
+  }
+
   const getSubscriptionBadge = (u: AdminUser) => {
     // Admin não mostra badge de subscription
-    if (u.email === 'admin1@sunstech.com') {
+    if (getUserRole(u) === 'admin') {
       return null
     }
 
     const sub = u.subscription
-    
+
     if (!sub) {
       return <Badge variant="outline" className="text-xs">Sem plano</Badge>
     }
@@ -264,7 +376,7 @@ export function AdminUsersPanel() {
     // Calcular dias restantes
     const now = new Date()
     const expiresAt = sub.expires_at ? new Date(sub.expires_at) : null
-    const daysRemaining = expiresAt 
+    const daysRemaining = expiresAt
       ? Math.ceil((expiresAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000))
       : 0
 
@@ -321,7 +433,7 @@ export function AdminUsersPanel() {
             Gerenciar Usuários
           </h3>
           <p className="text-sm text-muted-foreground">
-            Crie e gerencie os usuários que têm acesso à plataforma.
+            Crie e gerencie os usuários e revendedores que têm acesso à plataforma.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -341,6 +453,7 @@ export function AdminUsersPanel() {
               if (!open) {
                 setNewEmail('')
                 setNewPassword('')
+                setNewRole('user')
                 setCreateError('')
                 setCreateSuccess('')
               }
@@ -354,12 +467,28 @@ export function AdminUsersPanel() {
             </DialogTrigger>
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
-                <DialogTitle>Criar Novo Usuário</DialogTitle>
+                <DialogTitle>Criar Novo Acesso</DialogTitle>
                 <DialogDescription>
-                  O usuário poderá fazer login com o e-mail e senha informados.
+                  O acesso poderá ser criado como usuário comum ou revendedor.
                 </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleCreateUser} className="space-y-4 py-2">
+                <div className="space-y-2">
+                  <Label htmlFor="new-user-role">Tipo de acesso</Label>
+                  <Select value={newRole} onValueChange={(value) => setNewRole(value as UserRole)}>
+                    <SelectTrigger id="new-user-role">
+                      <SelectValue placeholder="Selecione o tipo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="user">Usuário comum</SelectItem>
+                      <SelectItem value="reseller">Revendedor</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Revendedor poderá receber créditos e, em etapa futura, criar e renovar seus próprios clientes.
+                  </p>
+                </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="new-user-email">E-mail</Label>
                   <div className="relative">
@@ -422,7 +551,7 @@ export function AdminUsersPanel() {
                     ) : (
                       <>
                         <UserPlus className="mr-2 h-4 w-4" />
-                        Criar Usuário
+                        {newRole === 'reseller' ? 'Criar Revendedor' : 'Criar Usuário'}
                       </>
                     )}
                   </Button>
@@ -464,88 +593,95 @@ export function AdminUsersPanel() {
             </div>
           ) : (
             <div className="divide-y">
-              {users.map((u) => (
-                <div
-                  key={u.id}
-                  className="flex items-center justify-between px-6 py-4 hover:bg-muted/30 transition-colors"
-                >
-                  <div className="flex flex-col gap-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-medium truncate">{u.email}</span>
-                      {u.email === 'admin1@sunstech.com' && (
-                        <Badge variant="secondary" className="text-xs shrink-0">
-                          Admin
-                        </Badge>
-                      )}
-                      {getSubscriptionBadge(u)}
-                    </div>
-                    <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
-                      <span>Criado em {formatDate(u.created_at)}</span>
-                      {u.email !== 'admin1@sunstech.com' && u.subscription?.expires_at && (
-                        <span className="flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          Expira: {new Date(u.subscription.expires_at).toLocaleDateString('pt-BR')}
-                        </span>
-                      )}
-                      {u.last_sign_in_at && (
-                        <span className="hidden sm:inline">
-                          Último acesso: {formatDate(u.last_sign_in_at)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
+              {users.map((u) => {
+                const role = getUserRole(u)
 
-                  <div className="flex items-center gap-2 shrink-0 ml-4">
-                    {u.email !== 'admin1@sunstech.com' && (
-                      <>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openEditPlanDialog(u)}
-                          className="h-8"
-                        >
-                          <Clock className="h-3.5 w-3.5 mr-1.5" />
-                          <span className="hidden sm:inline">Plano</span>
-                        </Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-muted-foreground hover:text-destructive h-8 w-8 p-0"
-                              disabled={deletingId === u.id}
-                            >
-                              {deletingId === u.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <Trash2 className="h-4 w-4" />
-                              )}
-                              <span className="sr-only">Remover usuário</span>
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Remover usuário</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Tem certeza que deseja remover o usuário <strong>{u.email}</strong>? Esta ação não pode ser desfeita.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => handleDeleteUser(u.id)}
-                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                return (
+                  <div
+                    key={u.id}
+                    className="flex items-center justify-between px-6 py-4 hover:bg-muted/30 transition-colors"
+                  >
+                    <div className="flex flex-col gap-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium truncate">{u.email}</span>
+                        {getRoleBadge(u)}
+                        {getResellerWalletBadge(u)}
+                        {getSubscriptionBadge(u)}
+                      </div>
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+                        <span>Criado em {formatDate(u.created_at)}</span>
+                        {role !== 'admin' && u.subscription?.expires_at && (
+                          <span className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            Expira: {new Date(u.subscription.expires_at).toLocaleDateString('pt-BR')}
+                          </span>
+                        )}
+                        {role === 'reseller' && u.reseller_wallet?.last_recharge_at && (
+                          <span className="flex items-center gap-1">
+                            <Coins className="h-3 w-3" />
+                            Última recarga: {new Date(u.reseller_wallet.last_recharge_at).toLocaleDateString('pt-BR')}
+                          </span>
+                        )}
+                        {u.last_sign_in_at && (
+                          <span className="hidden sm:inline">
+                            Último acesso: {formatDate(u.last_sign_in_at)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0 ml-4">
+                      {role !== 'admin' && (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openEditPlanDialog(u)}
+                            className="h-8"
+                          >
+                            <Clock className="h-3.5 w-3.5 mr-1.5" />
+                            <span className="hidden sm:inline">Plano</span>
+                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-muted-foreground hover:text-destructive h-8 w-8 p-0"
+                                disabled={deletingId === u.id}
                               >
-                                Remover
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </>
-                    )}
+                                {deletingId === u.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
+                                <span className="sr-only">Remover usuário</span>
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Remover usuário</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Tem certeza que deseja remover o usuário <strong>{u.email}</strong>? Esta ação não pode ser desfeita.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => handleDeleteUser(u.id)}
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                >
+                                  Remover
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </CardContent>

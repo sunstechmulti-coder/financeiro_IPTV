@@ -33,7 +33,6 @@ import { useSupabaseData } from '@/hooks/use-supabase-data'
 import { createClient } from '@/lib/supabase/client'
 
 const ADMIN_EMAIL = 'admin1@sunstech.com'
-const ADMIN_WHATSAPP = process.env.NEXT_PUBLIC_ADMIN_WHATSAPP || '5541984119131'
 
 type UserRole = 'admin' | 'reseller' | 'user'
 type AccessMode = 'admin' | 'reseller' | 'user' | 'user_only' | 'blocked'
@@ -56,6 +55,11 @@ interface Subscription {
   reseller_days_until_recharge_deadline?: number | null
   reseller_grace_days_remaining?: number | null
   reseller_grace_until?: string | null
+
+  renewal_whatsapp_number?: string | null
+  renewal_whatsapp_owner_email?: string | null
+  renewal_whatsapp_owner_role?: 'admin' | 'reseller' | null
+  renewal_whatsapp_missing?: boolean
 }
 
 interface CashFlowDashboardProps {
@@ -89,8 +93,8 @@ function formatDateBR(date: string | null | undefined) {
   return parsedDate.toLocaleDateString('pt-BR')
 }
 
-function onlyNumbers(value: string) {
-  return value.replace(/\D/g, '')
+function onlyNumbers(value: string | null | undefined) {
+  return String(value || '').replace(/\D/g, '')
 }
 
 export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
@@ -300,21 +304,36 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
   }
 
   const handleRenewWhatsapp = () => {
-    const adminWhatsapp = onlyNumbers(ADMIN_WHATSAPP)
+    const renewalWhatsapp = onlyNumbers(subscription?.renewal_whatsapp_number)
+    const ownerRole = subscription?.renewal_whatsapp_owner_role
+    const ownerEmail = subscription?.renewal_whatsapp_owner_email
 
-    if (!adminWhatsapp) {
-      window.alert('WhatsApp do administrador não configurado.')
+    if (!renewalWhatsapp) {
+      if (ownerRole === 'reseller') {
+        window.alert(
+          'O revendedor responsável por esta conta ainda não configurou o WhatsApp de renovação.'
+        )
+      } else {
+        window.alert(
+          'O WhatsApp de renovação do administrador ainda não foi configurado.'
+        )
+      }
+
       return
     }
 
     const expiresAt = formatDateBR(subscription?.expires_at)
     const daysRemaining = subscription?.days_remaining ?? 0
+    const destination =
+      ownerRole === 'reseller'
+        ? `Revendedor responsável: ${ownerEmail || 'não informado'}`
+        : `Administrador: ${ownerEmail || 'não informado'}`
 
     const message = encodeURIComponent(
-      `Olá, quero renovar meu acesso ao painel Cash Flow.\n\nConta: ${userEmail || 'não informado'}\nVencimento: ${expiresAt}\nDias restantes: ${daysRemaining} dia(s)`
+      `Olá, quero renovar meu acesso ao painel Cash Flow.\n\nConta: ${userEmail || 'não informado'}\nVencimento: ${expiresAt}\nDias restantes: ${daysRemaining} dia(s)\n${destination}`
     )
 
-    window.open(`https://wa.me/${adminWhatsapp}?text=${message}`, '_blank', 'noopener,noreferrer')
+    window.open(`https://wa.me/${renewalWhatsapp}?text=${message}`, '_blank', 'noopener,noreferrer')
   }
 
   const {
@@ -468,7 +487,11 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
                       size="sm"
                       onClick={handleRenewWhatsapp}
                       className="h-7 rounded-full bg-green-600 px-2.5 text-[11px] font-semibold text-white hover:bg-green-700"
-                      title="Renovar acesso pelo WhatsApp"
+                      title={
+                        subscription?.renewal_whatsapp_owner_role === 'reseller'
+                          ? 'Renovar pelo WhatsApp do revendedor'
+                          : 'Renovar pelo WhatsApp do administrador'
+                      }
                     >
                       <MessageCircle className="mr-1 h-3.5 w-3.5" />
                       <span>Renovar</span>

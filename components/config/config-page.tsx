@@ -8,6 +8,7 @@ import { SaidasRapidasList } from '@/components/config/saidas-rapidas-list'
 import { AtivacoesList } from '@/components/config/ativacoes-list'
 import { RevendaConfig } from '@/components/config/revenda-config'
 import { ChangePassword } from '@/components/config/change-password'
+import { WhatsappSettings } from '@/components/config/whatsapp-settings'
 import { AdminUsersPanel } from '@/components/config/admin-users-panel'
 import { cn } from '@/lib/utils'
 import type { Servidor, PlanoEntrada, SaidaRapida, ActivationProduct, RevendaGrupo } from '@/lib/types'
@@ -68,7 +69,7 @@ export function ConfigPage({
         <div>
           <h2 className="text-lg font-semibold">Configurações</h2>
           <p className="text-sm text-muted-foreground">
-            Gerencie servidores, planos, saídas e ativações.
+            Gerencie servidores, planos, saídas, ativações e dados da conta.
           </p>
         </div>
       </div>
@@ -189,7 +190,10 @@ export function ConfigPage({
         </TabsContent>
 
         <TabsContent value="conta" className="mt-6">
-          <ChangePassword />
+          <div className="space-y-4">
+            <WhatsappSettings />
+            <ChangePassword />
+          </div>
         </TabsContent>
 
         {isAdmin && (

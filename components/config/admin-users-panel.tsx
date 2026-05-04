@@ -15,6 +15,14 @@ import {
   RefreshCw,
   Calendar,
   Clock,
+  Store,
+  User,
+  ShieldCheck,
+  Coins,
+  History,
+  PlusCircle,
+  MinusCircle,
+  ArrowRightLeft,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -49,6 +57,10 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
+type UserRole = 'admin' | 'reseller' | 'user'
+type ResellerStatus = 'active' | 'grace' | 'blocked'
+type CreditAction = 'add' | 'remove'
+
 interface Subscription {
   id: string
   user_id: string
@@ -59,12 +71,72 @@ interface Subscription {
   is_active: boolean
 }
 
+interface UserProfile {
+  id: string
+  email: string | null
+  role: UserRole
+  created_by: string | null
+  reseller_id: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+interface ResellerWallet {
+  id: string
+  reseller_id: string
+  balance: number
+  last_recharge_at: string | null
+  grace_until: string | null
+  status: ResellerStatus
+  created_at: string
+  updated_at: string
+}
+
+interface ResellerCreditLedgerEntry {
+  id: string
+  reseller_id: string
+  type: string
+  amount: number
+  balance_after: number
+  target_user_id: string | null
+  created_by: string | null
+  note: string | null
+  metadata: Record<string, unknown>
+  created_at: string
+}
+
+interface ResellerSettings {
+  id: string
+  recharge_deadline_days: number
+  grace_days: number
+  updated_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+interface AdminLinkedProfile {
+  id: string
+  email: string | null
+  role: UserRole
+  is_active: boolean
+}
+
+interface AdminResellerOption extends AdminLinkedProfile {
+  reseller_wallet?: ResellerWallet | null
+}
+
 interface AdminUser {
   id: string
   email: string | undefined
   created_at: string
   last_sign_in_at: string | undefined
   subscription: Subscription | null
+  role?: UserRole
+  profile?: UserProfile | null
+  created_by_profile?: AdminLinkedProfile | null
+  reseller_profile?: AdminLinkedProfile | null
+  reseller_wallet?: ResellerWallet | null
 }
 
 const PLAN_LABELS: Record<string, string> = {
@@ -77,8 +149,90 @@ const PLAN_LABELS: Record<string, string> = {
   custom: 'Personalizado',
 }
 
+const ROLE_LABELS: Record<UserRole, string> = {
+  admin: 'Admin',
+  reseller: 'Revendedor',
+  user: 'Usuário',
+}
+
+const STATUS_LABELS: Record<ResellerStatus, string> = {
+  active: 'Ativo',
+  grace: 'Tolerância',
+  blocked: 'Bloqueado',
+}
+
+const CREDIT_TYPE_LABELS: Record<string, string> = {
+  admin_add: 'Crédito adicionado',
+  admin_remove: 'Crédito removido',
+  renewal: 'Renovação de cliente',
+  manual_adjustment: 'Ajuste manual',
+  refund: 'Estorno',
+  system_block: 'Bloqueio automático',
+  system_unblock: 'Desbloqueio automático',
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000
+const DEFAULT_RESELLER_ACTIVE_DAYS = 60
+const DEFAULT_RESELLER_GRACE_DAYS = 30
+
+function addDaysFromDate(dateStr: string | null | undefined, days: number) {
+  if (!dateStr) return null
+
+  const date = new Date(dateStr)
+
+  if (Number.isNaN(date.getTime())) return null
+
+  return new Date(date.getTime() + days * DAY_MS)
+}
+
+function getDaysUntil(date: Date | null) {
+  if (!date) return null
+
+  const now = new Date()
+  const days = Math.ceil((date.getTime() - now.getTime()) / DAY_MS)
+
+  return Math.max(0, days)
+}
+
+function formatDateOnlyFromDate(date: Date | null) {
+  if (!date) return '—'
+
+  return date.toLocaleDateString('pt-BR')
+}
+
+function getResellerRechargeDeadline(
+  wallet: ResellerWallet | null | undefined,
+  activeDays = DEFAULT_RESELLER_ACTIVE_DAYS
+) {
+  if (!wallet) return null
+
+  return addDaysFromDate(wallet.last_recharge_at || wallet.created_at, activeDays)
+}
+
+function getResellerGraceDeadline(
+  wallet: ResellerWallet | null | undefined,
+  activeDays = DEFAULT_RESELLER_ACTIVE_DAYS,
+  graceDays = DEFAULT_RESELLER_GRACE_DAYS
+) {
+  if (!wallet) return null
+
+  if (wallet.grace_until) {
+    const graceDate = new Date(wallet.grace_until)
+
+    if (!Number.isNaN(graceDate.getTime())) return graceDate
+  }
+
+  return addDaysFromDate(wallet.last_recharge_at || wallet.created_at, activeDays + graceDays)
+}
+
+function getUserRole(u: AdminUser): UserRole {
+  if (u.email === 'admin1@sunstech.com') return 'admin'
+  return u.role || u.profile?.role || 'user'
+}
+
 export function AdminUsersPanel() {
   const [users, setUsers] = useState<AdminUser[]>([])
+  const [resellers, setResellers] = useState<AdminResellerOption[]>([])
   const [loadingUsers, setLoadingUsers] = useState(true)
   const [error, setError] = useState('')
 
@@ -86,6 +240,7 @@ export function AdminUsersPanel() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [newEmail, setNewEmail] = useState('')
   const [newPassword, setNewPassword] = useState('')
+  const [newRole, setNewRole] = useState<UserRole>('user')
   const [showPassword, setShowPassword] = useState(false)
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState('')
@@ -102,6 +257,55 @@ export function AdminUsersPanel() {
   const [updatingPlan, setUpdatingPlan] = useState(false)
   const [planUpdateSuccess, setPlanUpdateSuccess] = useState('')
 
+
+  // Créditos do revendedor
+  const [creditsDialogOpen, setCreditsDialogOpen] = useState(false)
+  const [creditsUser, setCreditsUser] = useState<AdminUser | null>(null)
+  const [creditAction, setCreditAction] = useState<CreditAction>('add')
+  const [creditAmount, setCreditAmount] = useState('')
+  const [creditNote, setCreditNote] = useState('')
+  const [creditWallet, setCreditWallet] = useState<ResellerWallet | null>(null)
+  const [creditLedger, setCreditLedger] = useState<ResellerCreditLedgerEntry[]>([])
+  const [creditLoading, setCreditLoading] = useState(false)
+  const [creditHistoryLoading, setCreditHistoryLoading] = useState(false)
+  const [creditError, setCreditError] = useState('')
+  const [creditSuccess, setCreditSuccess] = useState('')
+
+  // Configurações da revenda
+  const [settingsLoading, setSettingsLoading] = useState(false)
+  const [settingsSaving, setSettingsSaving] = useState(false)
+  const [resellerSettings, setResellerSettings] = useState<ResellerSettings | null>(null)
+  const [rechargeDeadlineDays, setRechargeDeadlineDays] = useState('60')
+  const [graceDays, setGraceDays] = useState('30')
+  const [settingsError, setSettingsError] = useState('')
+  const [settingsSuccess, setSettingsSuccess] = useState('')
+
+  // Alterar tipo de acesso
+  const [roleDialogOpen, setRoleDialogOpen] = useState(false)
+  const [roleUser, setRoleUser] = useState<AdminUser | null>(null)
+  const [targetRole, setTargetRole] = useState<UserRole>('user')
+  const [roleChanging, setRoleChanging] = useState(false)
+  const [roleError, setRoleError] = useState('')
+  const [roleSuccess, setRoleSuccess] = useState('')
+
+  // Migrar cliente entre revendedores
+  const [migrateDialogOpen, setMigrateDialogOpen] = useState(false)
+  const [migratingUser, setMigratingUser] = useState<AdminUser | null>(null)
+  const [targetResellerId, setTargetResellerId] = useState('')
+  const [migratingClient, setMigratingClient] = useState(false)
+  const [migrationError, setMigrationError] = useState('')
+  const [migrationSuccess, setMigrationSuccess] = useState('')
+
+  const resellerRechargeDeadlineDays = Math.max(
+    1,
+    Number(rechargeDeadlineDays) || DEFAULT_RESELLER_ACTIVE_DAYS
+  )
+
+  const resellerGraceDays = Math.max(
+    0,
+    Number(graceDays) || DEFAULT_RESELLER_GRACE_DAYS
+  )
+
   const fetchUsers = useCallback(async () => {
     setLoadingUsers(true)
     setError('')
@@ -112,7 +316,8 @@ export function AdminUsersPanel() {
         setError(json.error || 'Erro ao carregar usuários.')
         return
       }
-      setUsers(json.users)
+      setUsers(json.users || [])
+      setResellers(json.resellers || [])
     } catch {
       setError('Erro ao conectar ao servidor.')
     } finally {
@@ -120,9 +325,34 @@ export function AdminUsersPanel() {
     }
   }, [])
 
+  const fetchResellerSettings = useCallback(async () => {
+    setSettingsLoading(true)
+    setSettingsError('')
+
+    try {
+      const res = await fetch('/api/admin/reseller-settings')
+      const json = await res.json()
+
+      if (!res.ok) {
+        setSettingsError(json.error || 'Erro ao carregar configurações da revenda.')
+        return
+      }
+
+      const settings = json.settings as ResellerSettings
+      setResellerSettings(settings)
+      setRechargeDeadlineDays(String(settings.recharge_deadline_days ?? 60))
+      setGraceDays(String(settings.grace_days ?? 30))
+    } catch {
+      setSettingsError('Erro ao conectar ao servidor de configurações.')
+    } finally {
+      setSettingsLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     fetchUsers()
-  }, [fetchUsers])
+    fetchResellerSettings()
+  }, [fetchUsers, fetchResellerSettings])
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -134,16 +364,21 @@ export function AdminUsersPanel() {
       const res = await fetch('/api/admin/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: newEmail, password: newPassword }),
+        body: JSON.stringify({
+          email: newEmail,
+          password: newPassword,
+          role: newRole,
+        }),
       })
       const json = await res.json()
       if (!res.ok) {
         setCreateError(json.error || 'Erro ao criar usuário.')
         return
       }
-      setCreateSuccess(`Usuário ${json.user.email} criado com sucesso!`)
+      setCreateSuccess(`${ROLE_LABELS[newRole]} ${json.user.email} criado com sucesso!`)
       setNewEmail('')
       setNewPassword('')
+      setNewRole('user')
       await fetchUsers()
       setTimeout(() => {
         setDialogOpen(false)
@@ -153,6 +388,171 @@ export function AdminUsersPanel() {
       setCreateError('Erro ao conectar ao servidor.')
     } finally {
       setCreating(false)
+    }
+  }
+
+  const handleSaveResellerSettings = async () => {
+    const rechargeDays = Number(rechargeDeadlineDays)
+    const toleranceDays = Number(graceDays)
+
+    if (!Number.isFinite(rechargeDays) || !Number.isInteger(rechargeDays) || rechargeDays <= 0) {
+      setSettingsError('Informe um prazo de recarga válido, em dias.')
+      return
+    }
+
+    if (!Number.isFinite(toleranceDays) || !Number.isInteger(toleranceDays) || toleranceDays < 0) {
+      setSettingsError('Informe uma tolerância válida, em dias.')
+      return
+    }
+
+    setSettingsSaving(true)
+    setSettingsError('')
+    setSettingsSuccess('')
+
+    try {
+      const res = await fetch('/api/admin/reseller-settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rechargeDeadlineDays: rechargeDays,
+          graceDays: toleranceDays,
+        }),
+      })
+
+      const json = await res.json()
+
+      if (!res.ok) {
+        setSettingsError(json.error || 'Erro ao salvar configurações da revenda.')
+        return
+      }
+
+      setResellerSettings(json.settings)
+      setSettingsSuccess('Configurações da revenda atualizadas com sucesso.')
+      await fetchUsers()
+
+      setTimeout(() => setSettingsSuccess(''), 2500)
+    } catch {
+      setSettingsError('Erro ao conectar ao servidor de configurações.')
+    } finally {
+      setSettingsSaving(false)
+    }
+  }
+
+  const openRoleDialog = (user: AdminUser) => {
+    const role = getUserRole(user)
+
+    setRoleUser(user)
+    setTargetRole(role === 'reseller' ? 'user' : 'reseller')
+    setRoleError('')
+    setRoleSuccess('')
+    setRoleDialogOpen(true)
+  }
+
+  const resetRoleDialog = () => {
+    setRoleUser(null)
+    setTargetRole('user')
+    setRoleError('')
+    setRoleSuccess('')
+  }
+
+  const handleChangeUserRole = async () => {
+    if (!roleUser) return
+
+    setRoleChanging(true)
+    setRoleError('')
+    setRoleSuccess('')
+
+    try {
+      const res = await fetch('/api/admin/user-role', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: roleUser.id,
+          role: targetRole,
+        }),
+      })
+
+      const json = await res.json()
+
+      if (!res.ok) {
+        setRoleError(json.error || 'Erro ao alterar tipo de acesso.')
+        return
+      }
+
+      setRoleSuccess(json.message || 'Tipo de acesso alterado com sucesso.')
+      await fetchUsers()
+
+      setTimeout(() => {
+        setRoleDialogOpen(false)
+        resetRoleDialog()
+      }, 1500)
+    } catch {
+      setRoleError('Erro ao conectar ao servidor.')
+    } finally {
+      setRoleChanging(false)
+    }
+  }
+
+  const openMigrateDialog = (user: AdminUser) => {
+    setMigratingUser(user)
+    setTargetResellerId(user.profile?.reseller_id || '')
+    setMigrationError('')
+    setMigrationSuccess('')
+    setMigrateDialogOpen(true)
+  }
+
+  const resetMigrateDialog = () => {
+    setMigratingUser(null)
+    setTargetResellerId('')
+    setMigrationError('')
+    setMigrationSuccess('')
+  }
+
+  const handleMigrateClient = async () => {
+    if (!migratingUser) return
+
+    if (!targetResellerId) {
+      setMigrationError('Selecione o revendedor de destino.')
+      return
+    }
+
+    if (targetResellerId === migratingUser.profile?.reseller_id) {
+      setMigrationError('Este cliente já está vinculado a este revendedor.')
+      return
+    }
+
+    setMigratingClient(true)
+    setMigrationError('')
+    setMigrationSuccess('')
+
+    try {
+      const res = await fetch('/api/admin/client-reseller', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId: migratingUser.id,
+          resellerId: targetResellerId,
+        }),
+      })
+
+      const json = await res.json()
+
+      if (!res.ok) {
+        setMigrationError(json.error || 'Erro ao migrar cliente.')
+        return
+      }
+
+      setMigrationSuccess(json.message || 'Cliente migrado com sucesso.')
+      await fetchUsers()
+
+      setTimeout(() => {
+        setMigrateDialogOpen(false)
+        resetMigrateDialog()
+      }, 1500)
+    } catch {
+      setMigrationError('Erro ao conectar ao servidor.')
+    } finally {
+      setMigratingClient(false)
     }
   }
 
@@ -229,7 +629,104 @@ export function AdminUsersPanel() {
     setPlanUpdateSuccess('')
   }
 
-  const formatDate = (dateStr: string | undefined) => {
+
+  const fetchResellerCredits = async (resellerId: string) => {
+    setCreditHistoryLoading(true)
+    setCreditError('')
+
+    try {
+      const res = await fetch(`/api/admin/reseller-credits?resellerId=${encodeURIComponent(resellerId)}`)
+      const json = await res.json()
+
+      if (!res.ok) {
+        setCreditError(json.error || 'Erro ao carregar créditos do revendedor.')
+        return
+      }
+
+      setCreditWallet(json.wallet || null)
+      setCreditLedger(json.ledger || [])
+    } catch {
+      setCreditError('Erro ao conectar ao servidor de créditos.')
+    } finally {
+      setCreditHistoryLoading(false)
+    }
+  }
+
+  const openCreditsDialog = async (user: AdminUser) => {
+    setCreditsUser(user)
+    setCreditWallet(user.reseller_wallet || null)
+    setCreditLedger([])
+    setCreditAction('add')
+    setCreditAmount('')
+    setCreditNote('')
+    setCreditError('')
+    setCreditSuccess('')
+    setCreditsDialogOpen(true)
+    await fetchResellerCredits(user.id)
+  }
+
+  const resetCreditsDialog = () => {
+    setCreditsUser(null)
+    setCreditWallet(null)
+    setCreditLedger([])
+    setCreditAction('add')
+    setCreditAmount('')
+    setCreditNote('')
+    setCreditError('')
+    setCreditSuccess('')
+  }
+
+  const handleSaveCredits = async () => {
+    if (!creditsUser) return
+
+    const amount = Number(creditAmount)
+
+    if (!Number.isFinite(amount) || !Number.isInteger(amount) || amount <= 0) {
+      setCreditError('Informe uma quantidade inteira maior que zero.')
+      return
+    }
+
+    setCreditLoading(true)
+    setCreditError('')
+    setCreditSuccess('')
+
+    try {
+      const res = await fetch('/api/admin/reseller-credits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          resellerId: creditsUser.id,
+          action: creditAction,
+          amount,
+          note: creditNote,
+        }),
+      })
+
+      const json = await res.json()
+
+      if (!res.ok) {
+        setCreditError(json.error || 'Erro ao movimentar créditos.')
+        return
+      }
+
+      setCreditWallet(json.wallet || null)
+      setCreditSuccess(
+        creditAction === 'add'
+          ? `${amount} crédito(s) adicionados com sucesso.`
+          : `${amount} crédito(s) removidos com sucesso.`
+      )
+      setCreditAmount('')
+      setCreditNote('')
+      await fetchUsers()
+      await fetchResellerCredits(creditsUser.id)
+    } catch {
+      setCreditError('Erro ao conectar ao servidor de créditos.')
+    } finally {
+      setCreditLoading(false)
+    }
+  }
+
+  const formatDate = (dateStr: string | undefined | null) => {
     if (!dateStr) return '—'
     return new Date(dateStr).toLocaleDateString('pt-BR', {
       day: '2-digit',
@@ -240,14 +737,112 @@ export function AdminUsersPanel() {
     })
   }
 
+  const getRoleBadge = (u: AdminUser) => {
+    const role = getUserRole(u)
+
+    if (role === 'admin') {
+      return (
+        <Badge variant="secondary" className="text-xs shrink-0">
+          <ShieldCheck className="mr-1 h-3 w-3" />
+          Admin
+        </Badge>
+      )
+    }
+
+    if (role === 'reseller') {
+      return (
+        <Badge className="text-xs shrink-0 bg-purple-500/20 text-purple-400 border-purple-500/30">
+          <Store className="mr-1 h-3 w-3" />
+          Revendedor
+        </Badge>
+      )
+    }
+
+    return (
+      <Badge variant="outline" className="text-xs shrink-0">
+        <User className="mr-1 h-3 w-3" />
+        Usuário
+      </Badge>
+    )
+  }
+
+  const getResellerWalletBadge = (u: AdminUser) => {
+    if (getUserRole(u) !== 'reseller') return null
+
+    const wallet = u.reseller_wallet
+
+    if (!wallet) {
+      return (
+        <Badge variant="outline" className="text-xs border-orange-500/40 text-orange-400">
+          Sem carteira
+        </Badge>
+      )
+    }
+
+    const statusClass =
+      wallet.status === 'blocked'
+        ? 'bg-destructive/20 text-destructive border-destructive/30'
+        : wallet.status === 'grace'
+          ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+          : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+
+    return (
+      <Badge className={`text-xs shrink-0 ${statusClass}`}>
+        <Coins className="mr-1 h-3 w-3" />
+        {wallet.balance} créditos · {STATUS_LABELS[wallet.status]}
+      </Badge>
+    )
+  }
+
+  const getResellerRechargeBadge = (u: AdminUser) => {
+    if (getUserRole(u) !== 'reseller') return null
+
+    const wallet = u.reseller_wallet
+
+    if (!wallet) return null
+
+    if (wallet.status === 'blocked') {
+      return (
+        <Badge variant="destructive" className="text-xs shrink-0">
+          Revenda bloqueada
+        </Badge>
+      )
+    }
+
+    if (wallet.status === 'grace') {
+      const graceDaysRemaining = getDaysUntil(getResellerGraceDeadline(wallet, resellerRechargeDeadlineDays, resellerGraceDays))
+
+      return (
+        <Badge className="text-xs shrink-0 bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
+          <Clock className="mr-1 h-3 w-3" />
+          Tolerância {graceDaysRemaining ?? 0}d
+        </Badge>
+      )
+    }
+
+    const rechargeDaysRemaining = getDaysUntil(getResellerRechargeDeadline(wallet, resellerRechargeDeadlineDays))
+
+    return (
+      <Badge className="text-xs shrink-0 bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
+        <Clock className="mr-1 h-3 w-3" />
+        {typeof rechargeDaysRemaining === 'number'
+          ? `Recarga em ${rechargeDaysRemaining}d`
+          : 'Recarga pendente'}
+      </Badge>
+    )
+  }
+
   const getSubscriptionBadge = (u: AdminUser) => {
-    // Admin não mostra badge de subscription
-    if (u.email === 'admin1@sunstech.com') {
+    const role = getUserRole(u)
+
+    // Admin e revendedor não mostram badge de assinatura antiga.
+    // Para revendedor, o controle correto é a carteira/recarga de créditos.
+    if (role === 'admin' || role === 'reseller') {
       return null
     }
 
     const sub = u.subscription
-    
+
     if (!sub) {
       return <Badge variant="outline" className="text-xs">Sem plano</Badge>
     }
@@ -264,7 +859,7 @@ export function AdminUsersPanel() {
     // Calcular dias restantes
     const now = new Date()
     const expiresAt = sub.expires_at ? new Date(sub.expires_at) : null
-    const daysRemaining = expiresAt 
+    const daysRemaining = expiresAt
       ? Math.ceil((expiresAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000))
       : 0
 
@@ -321,7 +916,7 @@ export function AdminUsersPanel() {
             Gerenciar Usuários
           </h3>
           <p className="text-sm text-muted-foreground">
-            Crie e gerencie os usuários que têm acesso à plataforma.
+            Crie e gerencie os usuários e revendedores que têm acesso à plataforma.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -341,6 +936,7 @@ export function AdminUsersPanel() {
               if (!open) {
                 setNewEmail('')
                 setNewPassword('')
+                setNewRole('user')
                 setCreateError('')
                 setCreateSuccess('')
               }
@@ -354,12 +950,28 @@ export function AdminUsersPanel() {
             </DialogTrigger>
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
-                <DialogTitle>Criar Novo Usuário</DialogTitle>
+                <DialogTitle>Criar Novo Acesso</DialogTitle>
                 <DialogDescription>
-                  O usuário poderá fazer login com o e-mail e senha informados.
+                  O acesso poderá ser criado como usuário comum ou revendedor.
                 </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleCreateUser} className="space-y-4 py-2">
+                <div className="space-y-2">
+                  <Label htmlFor="new-user-role">Tipo de acesso</Label>
+                  <Select value={newRole} onValueChange={(value) => setNewRole(value as UserRole)}>
+                    <SelectTrigger id="new-user-role">
+                      <SelectValue placeholder="Selecione o tipo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="user">Usuário comum</SelectItem>
+                      <SelectItem value="reseller">Revendedor</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Revendedor poderá receber créditos e, em etapa futura, criar e renovar seus próprios clientes.
+                  </p>
+                </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="new-user-email">E-mail</Label>
                   <div className="relative">
@@ -422,7 +1034,7 @@ export function AdminUsersPanel() {
                     ) : (
                       <>
                         <UserPlus className="mr-2 h-4 w-4" />
-                        Criar Usuário
+                        {newRole === 'reseller' ? 'Criar Revendedor' : 'Criar Usuário'}
                       </>
                     )}
                   </Button>
@@ -439,6 +1051,104 @@ export function AdminUsersPanel() {
           {error}
         </div>
       )}
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium">
+            Configurações da Revenda
+          </CardTitle>
+          <CardDescription>
+            Defina o prazo máximo entre recargas e a tolerância antes do bloqueio.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {settingsLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Carregando configurações...
+            </div>
+          ) : (
+            <>
+              <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+                <div className="space-y-2">
+                  <Label htmlFor="recharge-deadline-days">Prazo máximo entre recargas</Label>
+                  <Input
+                    id="recharge-deadline-days"
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={rechargeDeadlineDays}
+                    onChange={(e) => setRechargeDeadlineDays(e.target.value)}
+                    disabled={settingsSaving}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Hoje usado para calcular “Recarga em Xd”.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="reseller-grace-days">Tolerância após o prazo</Label>
+                  <Input
+                    id="reseller-grace-days"
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={graceDays}
+                    onChange={(e) => setGraceDays(e.target.value)}
+                    disabled={settingsSaving}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Após a tolerância, a revenda é bloqueada.
+                  </p>
+                </div>
+
+                <Button
+                  onClick={handleSaveResellerSettings}
+                  disabled={settingsSaving}
+                  className="md:min-w-[120px]"
+                >
+                  {settingsSaving ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Salvando...
+                    </>
+                  ) : (
+                    'Salvar'
+                  )}
+                </Button>
+              </div>
+
+              <div className="rounded-md bg-muted/40 p-3 text-xs text-muted-foreground">
+                Regra atual: revendedor fica ativo por{' '}
+                <strong>{resellerRechargeDeadlineDays} dia(s)</strong> após a última recarga,
+                depois entra em tolerância por{' '}
+                <strong>{resellerGraceDays} dia(s)</strong>. Após isso, o painel é bloqueado
+                até uma nova recarga.
+              </div>
+            </>
+          )}
+
+          {settingsError && (
+            <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              {settingsError}
+            </div>
+          )}
+
+          {settingsSuccess && (
+            <div className="flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600">
+              <Check className="h-4 w-4 shrink-0" />
+              {settingsSuccess}
+            </div>
+          )}
+
+          {resellerSettings?.updated_at && (
+            <p className="text-xs text-muted-foreground">
+              Última atualização: {formatDate(resellerSettings.updated_at)}
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="pb-3">
@@ -464,92 +1174,532 @@ export function AdminUsersPanel() {
             </div>
           ) : (
             <div className="divide-y">
-              {users.map((u) => (
-                <div
-                  key={u.id}
-                  className="flex items-center justify-between px-6 py-4 hover:bg-muted/30 transition-colors"
-                >
-                  <div className="flex flex-col gap-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-medium truncate">{u.email}</span>
-                      {u.email === 'admin1@sunstech.com' && (
-                        <Badge variant="secondary" className="text-xs shrink-0">
-                          Admin
-                        </Badge>
-                      )}
-                      {getSubscriptionBadge(u)}
-                    </div>
-                    <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
-                      <span>Criado em {formatDate(u.created_at)}</span>
-                      {u.email !== 'admin1@sunstech.com' && u.subscription?.expires_at && (
-                        <span className="flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          Expira: {new Date(u.subscription.expires_at).toLocaleDateString('pt-BR')}
-                        </span>
-                      )}
-                      {u.last_sign_in_at && (
-                        <span className="hidden sm:inline">
-                          Último acesso: {formatDate(u.last_sign_in_at)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
+              {users.map((u) => {
+                const role = getUserRole(u)
 
-                  <div className="flex items-center gap-2 shrink-0 ml-4">
-                    {u.email !== 'admin1@sunstech.com' && (
-                      <>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openEditPlanDialog(u)}
-                          className="h-8"
-                        >
-                          <Clock className="h-3.5 w-3.5 mr-1.5" />
-                          <span className="hidden sm:inline">Plano</span>
-                        </Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
+                return (
+                  <div
+                    key={u.id}
+                    className="flex items-center justify-between px-6 py-4 hover:bg-muted/30 transition-colors"
+                  >
+                    <div className="flex flex-col gap-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium truncate">{u.email}</span>
+                        {getRoleBadge(u)}
+                        {getResellerWalletBadge(u)}
+                        {getResellerRechargeBadge(u)}
+                        {getSubscriptionBadge(u)}
+                      </div>
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+                        <span>Criado em {formatDate(u.created_at)}</span>
+                        {role === 'user' && u.reseller_profile?.email && (
+                          <span className="flex items-center gap-1">
+                            <Store className="h-3 w-3" />
+                            Revenda: {u.reseller_profile.email}
+                          </span>
+                        )}
+                        {role === 'user' && u.created_by_profile?.email && !u.reseller_profile?.email && (
+                          <span className="flex items-center gap-1">
+                            <User className="h-3 w-3" />
+                            Criado por: {u.created_by_profile.email}
+                          </span>
+                        )}
+                        {role === 'user' && u.subscription?.expires_at && (
+                          <span className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            Expira: {new Date(u.subscription.expires_at).toLocaleDateString('pt-BR')}
+                          </span>
+                        )}
+                        {role === 'reseller' && u.reseller_wallet?.last_recharge_at && (
+                          <span className="flex items-center gap-1">
+                            <Coins className="h-3 w-3" />
+                            Última recarga: {new Date(u.reseller_wallet.last_recharge_at).toLocaleDateString('pt-BR')}
+                          </span>
+                        )}
+                        {role === 'reseller' && u.reseller_wallet && (
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            Próxima recarga: {formatDateOnlyFromDate(getResellerRechargeDeadline(u.reseller_wallet, resellerRechargeDeadlineDays))}
+                          </span>
+                        )}
+                        {u.last_sign_in_at && (
+                          <span className="hidden sm:inline">
+                            Último acesso: {formatDate(u.last_sign_in_at)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0 ml-4">
+                      {role !== 'admin' && (
+                        <>
+                          {role === 'reseller' && (
                             <Button
-                              variant="ghost"
+                              variant="outline"
                               size="sm"
-                              className="text-muted-foreground hover:text-destructive h-8 w-8 p-0"
-                              disabled={deletingId === u.id}
+                              onClick={() => openCreditsDialog(u)}
+                              className="h-8"
                             >
-                              {deletingId === u.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <Trash2 className="h-4 w-4" />
-                              )}
-                              <span className="sr-only">Remover usuário</span>
+                              <Coins className="h-3.5 w-3.5 mr-1.5" />
+                              <span className="hidden sm:inline">Créditos</span>
                             </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Remover usuário</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Tem certeza que deseja remover o usuário <strong>{u.email}</strong>? Esta ação não pode ser desfeita.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => handleDeleteUser(u.id)}
-                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          )}
+
+                          {(role === 'user' || role === 'reseller') && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openRoleDialog(u)}
+                              className="h-8"
+                            >
+                              {role === 'reseller' ? (
+                                <User className="h-3.5 w-3.5 mr-1.5" />
+                              ) : (
+                                <Store className="h-3.5 w-3.5 mr-1.5" />
+                              )}
+                              <span className="hidden sm:inline">Tipo</span>
+                            </Button>
+                          )}
+
+                          {role === 'user' && u.profile?.reseller_id && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openMigrateDialog(u)}
+                              className="h-8"
+                              title="Migrar cliente para outro revendedor"
+                            >
+                              <ArrowRightLeft className="h-3.5 w-3.5 mr-1.5" />
+                              <span className="hidden sm:inline">Migrar</span>
+                            </Button>
+                          )}
+
+                          {role === 'user' && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openEditPlanDialog(u)}
+                              className="h-8"
+                            >
+                              <Clock className="h-3.5 w-3.5 mr-1.5" />
+                              <span className="hidden sm:inline">Plano</span>
+                            </Button>
+                          )}
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-muted-foreground hover:text-destructive h-8 w-8 p-0"
+                                disabled={deletingId === u.id}
                               >
-                                Remover
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </>
-                    )}
+                                {deletingId === u.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
+                                <span className="sr-only">Remover usuário</span>
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Remover usuário</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Tem certeza que deseja remover o usuário <strong>{u.email}</strong>? Esta ação não pode ser desfeita.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => handleDeleteUser(u.id)}
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                >
+                                  Remover
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </CardContent>
       </Card>
+
+      {/* Dialog de alteração de tipo de acesso */}
+      <Dialog
+        open={roleDialogOpen}
+        onOpenChange={(open) => {
+          setRoleDialogOpen(open)
+          if (!open) resetRoleDialog()
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Alterar Tipo de Acesso</DialogTitle>
+            <DialogDescription>
+              Altere o tipo da conta <strong>{roleUser?.email}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="target-role">Novo tipo de acesso</Label>
+              <Select value={targetRole} onValueChange={(value) => setTargetRole(value as UserRole)}>
+                <SelectTrigger id="target-role">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="user">Usuário comum</SelectItem>
+                  <SelectItem value="reseller">Revendedor</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="rounded-md bg-muted/50 p-3 text-sm text-muted-foreground">
+              {targetRole === 'reseller' ? (
+                <p>
+                  Ao transformar em revendedor, o sistema cria/ativa uma carteira de créditos
+                  com saldo inicial 0 e inicia o prazo de recarga a partir de hoje.
+                </p>
+              ) : (
+                <p>
+                  Um revendedor só poderá virar usuário comum se não tiver nenhum cliente
+                  vinculado. Se houver clientes, a alteração será bloqueada automaticamente.
+                </p>
+              )}
+            </div>
+
+            {roleError && (
+              <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                {roleError}
+              </div>
+            )}
+
+            {roleSuccess && (
+              <div className="flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600">
+                <Check className="h-4 w-4 shrink-0" />
+                {roleSuccess}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setRoleDialogOpen(false)}
+              disabled={roleChanging}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleChangeUserRole}
+              disabled={roleChanging || !roleUser}
+            >
+              {roleChanging ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Alterando...
+                </>
+              ) : (
+                'Salvar Tipo'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog de migração de cliente entre revendedores */}
+      <Dialog
+        open={migrateDialogOpen}
+        onOpenChange={(open) => {
+          setMigrateDialogOpen(open)
+          if (!open) resetMigrateDialog()
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Migrar Cliente</DialogTitle>
+            <DialogDescription>
+              Transfira o cliente <strong>{migratingUser?.email}</strong> para outro revendedor.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="rounded-md bg-muted/50 p-3 text-sm text-muted-foreground">
+              <p>
+                Revendedor atual:{' '}
+                <strong>{migratingUser?.reseller_profile?.email || 'Não identificado'}</strong>
+              </p>
+              <p className="mt-1">
+                A migração altera apenas o responsável da revenda. O plano, vencimento,
+                senha e histórico do cliente não são alterados.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="target-reseller">Novo revendedor responsável</Label>
+              <Select value={targetResellerId} onValueChange={setTargetResellerId}>
+                <SelectTrigger id="target-reseller">
+                  <SelectValue placeholder="Selecione o revendedor" />
+                </SelectTrigger>
+                <SelectContent>
+                  {resellers
+                    .filter((reseller) => reseller.id !== migratingUser?.profile?.reseller_id)
+                    .map((reseller) => (
+                      <SelectItem key={reseller.id} value={reseller.id}>
+                        {reseller.email || reseller.id}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              {resellers.length <= 1 && (
+                <p className="text-xs text-muted-foreground">
+                  É necessário ter outro revendedor ativo para migrar este cliente.
+                </p>
+              )}
+            </div>
+
+            {migrationError && (
+              <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                {migrationError}
+              </div>
+            )}
+
+            {migrationSuccess && (
+              <div className="flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600">
+                <Check className="h-4 w-4 shrink-0" />
+                {migrationSuccess}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setMigrateDialogOpen(false)}
+              disabled={migratingClient}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleMigrateClient}
+              disabled={migratingClient || !targetResellerId}
+            >
+              {migratingClient ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Migrando...
+                </>
+              ) : (
+                <>
+                  <ArrowRightLeft className="mr-2 h-4 w-4" />
+                  Migrar Cliente
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog de créditos do revendedor */}
+      <Dialog
+        open={creditsDialogOpen}
+        onOpenChange={(open) => {
+          setCreditsDialogOpen(open)
+          if (!open) resetCreditsDialog()
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Créditos do Revendedor</DialogTitle>
+            <DialogDescription>
+              Adicione ou remova créditos de <strong>{creditsUser?.email}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="grid gap-3 rounded-md border bg-muted/30 p-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+              <div>
+                <p className="text-xs text-muted-foreground">Saldo atual</p>
+                <p className="font-semibold text-foreground">
+                  {creditWallet?.balance ?? creditsUser?.reseller_wallet?.balance ?? 0} crédito(s)
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-muted-foreground">Status</p>
+                <p className="font-semibold text-foreground">
+                  {STATUS_LABELS[(creditWallet?.status || creditsUser?.reseller_wallet?.status || 'active') as ResellerStatus]}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-muted-foreground">Última recarga</p>
+                <p className="font-semibold text-foreground">
+                  {formatDate(creditWallet?.last_recharge_at || creditsUser?.reseller_wallet?.last_recharge_at)}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-muted-foreground">Próxima recarga</p>
+                <p className="font-semibold text-foreground">
+                  {formatDateOnlyFromDate(getResellerRechargeDeadline(creditWallet || creditsUser?.reseller_wallet, resellerRechargeDeadlineDays))}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-[160px_1fr]">
+              <div className="space-y-2">
+                <Label htmlFor="credit-action">Ação</Label>
+                <Select value={creditAction} onValueChange={(value) => setCreditAction(value as CreditAction)}>
+                  <SelectTrigger id="credit-action">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="add">
+                      <span className="flex items-center gap-2">
+                        <PlusCircle className="h-3.5 w-3.5" />
+                        Adicionar
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="remove">
+                      <span className="flex items-center gap-2">
+                        <MinusCircle className="h-3.5 w-3.5" />
+                        Remover
+                      </span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="credit-amount">Quantidade de créditos</Label>
+                <Input
+                  id="credit-amount"
+                  type="number"
+                  min="1"
+                  step="1"
+                  placeholder="Ex.: 10"
+                  value={creditAmount}
+                  onChange={(e) => setCreditAmount(e.target.value)}
+                  disabled={creditLoading}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="credit-note">Observação opcional</Label>
+              <Input
+                id="credit-note"
+                placeholder="Ex.: Recarga Pix, ajuste manual, remoção por correção..."
+                value={creditNote}
+                onChange={(e) => setCreditNote(e.target.value)}
+                disabled={creditLoading}
+              />
+            </div>
+
+            {creditError && (
+              <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                {creditError}
+              </div>
+            )}
+
+            {creditSuccess && (
+              <div className="flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600">
+                <Check className="h-4 w-4 shrink-0" />
+                {creditSuccess}
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="flex items-center gap-2 text-sm font-medium">
+                  <History className="h-4 w-4" />
+                  Histórico recente
+                </p>
+                {creditHistoryLoading && (
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                )}
+              </div>
+
+              <div className="max-h-56 overflow-y-auto rounded-md border">
+                {creditHistoryLoading ? (
+                  <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
+                    Carregando histórico...
+                  </div>
+                ) : creditLedger.length === 0 ? (
+                  <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
+                    Nenhuma movimentação registrada ainda.
+                  </div>
+                ) : (
+                  <div className="divide-y">
+                    {creditLedger.map((entry) => (
+                      <div key={entry.id} className="flex items-start justify-between gap-3 px-3 py-2 text-sm">
+                        <div className="min-w-0">
+                          <p className="font-medium">
+                            {CREDIT_TYPE_LABELS[entry.type] || entry.type}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatDate(entry.created_at)}
+                            {entry.note ? ` · ${entry.note}` : ''}
+                          </p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className={entry.amount >= 0 ? 'font-semibold text-emerald-500' : 'font-semibold text-destructive'}>
+                            {entry.amount > 0 ? '+' : ''}{entry.amount}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Saldo: {entry.balance_after}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setCreditsDialogOpen(false)}
+              disabled={creditLoading}
+            >
+              Fechar
+            </Button>
+            <Button
+              onClick={handleSaveCredits}
+              disabled={creditLoading || !creditAmount}
+            >
+              {creditLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Salvando...
+                </>
+              ) : creditAction === 'add' ? (
+                <>
+                  <PlusCircle className="mr-2 h-4 w-4" />
+                  Adicionar Créditos
+                </>
+              ) : (
+                <>
+                  <MinusCircle className="mr-2 h-4 w-4" />
+                  Remover Créditos
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog de edição de plano */}
       <Dialog

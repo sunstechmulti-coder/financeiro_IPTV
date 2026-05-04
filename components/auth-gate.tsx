@@ -12,6 +12,10 @@ import type { User } from '@supabase/supabase-js'
 const ADMIN_WHATSAPP = process.env.NEXT_PUBLIC_ADMIN_WHATSAPP || '5541984119131'
 const APP_VERSION = '1.0.0'
 
+type UserRole = 'admin' | 'reseller' | 'user'
+type AccessMode = 'admin' | 'reseller' | 'user' | 'user_only' | 'blocked'
+type ResellerStatus = 'active' | 'grace' | 'blocked'
+
 interface Subscription {
   id: string
   user_id: string
@@ -22,6 +26,14 @@ interface Subscription {
   is_active: boolean
   is_expired?: boolean
   days_remaining?: number
+
+  user_role?: UserRole
+  access_mode?: AccessMode
+  reseller_status?: ResellerStatus | null
+  reseller_grace_until?: string | null
+  reseller_days_until_recharge_deadline?: number | null
+  reseller_grace_days_remaining?: number | null
+  reseller_message?: string | null
 }
 
 interface AuthGateProps {
@@ -63,8 +75,10 @@ export function AuthGate({ children, onUserChange, onSubscriptionChange }: AuthG
   const checkSubscription = async () => {
     if (!mountedRef.current) return
     setCheckingSubscription(true)
+
     try {
       const res = await fetch('/api/subscription')
+
       if (res.ok && mountedRef.current) {
         const data = await res.json()
         setSubscription(data.subscription)
@@ -92,6 +106,7 @@ export function AuthGate({ children, onUserChange, onSubscriptionChange }: AuthG
           () => null  // captura erros de rede (Failed to fetch, etc.)
         )
         const result = await Promise.race([userPromise, timeoutPromise])
+
         if (!cancelled && result) {
           setUser(result)
           onUserChange?.(result)
@@ -104,11 +119,13 @@ export function AuthGate({ children, onUserChange, onSubscriptionChange }: AuthG
         if (!cancelled) setMounted(true)
       }
     }
+
     checkUser()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         if (cancelled) return
+
         if (session?.user) {
           setUser(session.user)
           onUserChange?.(session.user)
@@ -140,6 +157,7 @@ export function AuthGate({ children, onUserChange, onSubscriptionChange }: AuthG
     }
 
     setLoading(true)
+
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email: email.toLowerCase().trim(),
@@ -162,6 +180,7 @@ export function AuthGate({ children, onUserChange, onSubscriptionChange }: AuthG
         } else {
           setError('Erro ao fazer login. Tente novamente.')
         }
+
         return
       }
 
@@ -172,6 +191,7 @@ export function AuthGate({ children, onUserChange, onSubscriptionChange }: AuthG
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message.toLowerCase() : ''
+
       if (msg.includes('fetch') || msg.includes('network') || msg.includes('failed')) {
         setError('Sem conexão com o servidor. Verifique sua internet.')
       } else {
@@ -199,10 +219,14 @@ export function AuthGate({ children, onUserChange, onSubscriptionChange }: AuthG
     }
 
     const userEmail = user?.email || 'não informado'
-    const expiresAt = formatDateBR(subscription?.expires_at)
+    const isResellerBlocked =
+      subscription?.user_role === 'reseller' &&
+      subscription?.access_mode === 'blocked'
 
     const message = encodeURIComponent(
-      `Olá, quero renovar meu acesso ao painel Cash Flow.\n\nConta: ${userEmail}\nVencimento: ${expiresAt}`
+      isResellerBlocked
+        ? `Olá, preciso regularizar minha revenda no painel Cash Flow.\n\nConta: ${userEmail}\nStatus: Revenda bloqueada por falta de recarga`
+        : `Olá, quero renovar meu acesso ao painel Cash Flow.\n\nConta: ${userEmail}\nVencimento: ${formatDateBR(subscription?.expires_at)}`
     )
 
     window.open(`https://wa.me/${adminWhatsapp}?text=${message}`, '_blank', 'noopener,noreferrer')
@@ -220,8 +244,58 @@ export function AuthGate({ children, onUserChange, onSubscriptionChange }: AuthG
     )
   }
 
-  // Subscription expired (admin nunca expira) - só bloqueia se subscription carregou e está expirada
   const isAdmin = user?.email === 'admin1@sunstech.com'
+  const isResellerBlocked =
+    subscription?.user_role === 'reseller' &&
+    subscription?.access_mode === 'blocked'
+
+  // Revendedor bloqueado por falta de recarga
+  if (user && !checkingSubscription && isResellerBlocked && !isAdmin) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-destructive">
+              <AlertTriangle className="h-8 w-8 text-destructive-foreground" />
+            </div>
+            <CardTitle className="text-2xl">Revenda Bloqueada</CardTitle>
+            <CardDescription>
+              Sua conta de revendedor foi bloqueada por falta de recarga dentro do prazo.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="space-y-4">
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-muted-foreground">
+              <p>
+                Após 60 dias sem recarga, a revenda entra em tolerância por 30 dias.
+                Depois desse período, o uso do painel é interrompido até regularização.
+              </p>
+
+              {subscription?.reseller_grace_until && (
+                <p className="mt-2">
+                  Fim da tolerância: <strong>{formatDateBR(subscription.reseller_grace_until)}</strong>
+                </p>
+              )}
+            </div>
+
+            <Button
+              className="w-full bg-green-600 text-white hover:bg-green-700"
+              onClick={handleRenewWhatsapp}
+            >
+              <MessageCircle className="mr-2 h-4 w-4" />
+              Falar com Admin pelo WhatsApp
+            </Button>
+
+            <Button variant="outline" className="w-full" onClick={handleLogout}>
+              Sair da conta
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  // Subscription expired normal (admin nunca expira)
   if (user && !checkingSubscription && subscription?.is_expired && !isAdmin) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-4">
@@ -235,6 +309,7 @@ export function AuthGate({ children, onUserChange, onSubscriptionChange }: AuthG
               Sua assinatura expirou em {formatDateBR(subscription.expires_at)}.
             </CardDescription>
           </CardHeader>
+
           <CardContent className="space-y-4">
             <p className="text-center text-muted-foreground text-sm">
               Entre em contato com o administrador para renovar seu acesso ao sistema.
@@ -300,6 +375,7 @@ export function AuthGate({ children, onUserChange, onSubscriptionChange }: AuthG
                 />
               </div>
             </div>
+
             <div className="space-y-2">
               <Label htmlFor="password">Senha</Label>
               <div className="relative">
@@ -324,7 +400,9 @@ export function AuthGate({ children, onUserChange, onSubscriptionChange }: AuthG
                 </button>
               </div>
             </div>
+
             {error && <p className="text-sm text-destructive">{error}</p>}
+
             <Button type="submit" className="w-full" disabled={loading} data-testid="login-btn">
               {loading ? 'Entrando...' : <>Entrar <ArrowRight className="ml-2 h-4 w-4" /></>}
             </Button>

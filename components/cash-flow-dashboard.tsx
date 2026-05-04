@@ -15,6 +15,7 @@ import {
   ChevronRight,
   MessageCircle,
   Store,
+  AlertTriangle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SummaryCards } from '@/components/summary-cards'
@@ -35,6 +36,10 @@ import { createClient } from '@/lib/supabase/client'
 const ADMIN_EMAIL = 'admin1@sunstech.com'
 const ADMIN_WHATSAPP = process.env.NEXT_PUBLIC_ADMIN_WHATSAPP || '5541984119131'
 
+type UserRole = 'admin' | 'reseller' | 'user'
+type AccessMode = 'admin' | 'reseller' | 'user' | 'user_only' | 'blocked'
+type ResellerStatus = 'active' | 'grace' | 'blocked'
+
 interface Subscription {
   id: string
   user_id: string
@@ -45,13 +50,19 @@ interface Subscription {
   is_active: boolean
   is_expired?: boolean
   days_remaining?: number
+
+  user_role?: UserRole
+  access_mode?: AccessMode
+  reseller_status?: ResellerStatus | null
+  reseller_days_until_recharge_deadline?: number | null
+  reseller_grace_days_remaining?: number | null
+  reseller_grace_until?: string | null
 }
 
 interface CashFlowDashboardProps {
   subscription?: Subscription | null
 }
 
-type UserRole = 'admin' | 'reseller' | 'user'
 type Tab = 'dashboard' | 'clientes' | 'transacoes' | 'analytics' | 'configuracoes'
 
 const BASE_TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
@@ -93,7 +104,22 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
   const [selectedMonth, setSelectedMonth] = useState(today.getMonth())
   const [selectedYear, setSelectedYear] = useState(today.getFullYear())
 
-  const isReseller = userRole === 'reseller'
+  const isResellerProfile = userRole === 'reseller'
+  const resellerStatus = subscription?.reseller_status || null
+  const resellerAccessMode = subscription?.access_mode || null
+
+  // Revendedor ativo vê "Meus Clientes".
+  // Em tolerância, ele usa o painel como usuário comum.
+  const isReseller =
+    isResellerProfile &&
+    resellerAccessMode !== 'user_only' &&
+    resellerAccessMode !== 'blocked' &&
+    resellerStatus !== 'grace' &&
+    resellerStatus !== 'blocked'
+
+  const isResellerGrace =
+    isResellerProfile &&
+    (resellerAccessMode === 'user_only' || resellerStatus === 'grace')
 
   const tabs = useMemo(() => {
     if (!isReseller) return BASE_TABS
@@ -109,6 +135,10 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
     if (!subscription) return null
 
     if (userEmail === ADMIN_EMAIL) return null
+
+    // Para revendedor, o badge principal não deve ser "Teste 30d".
+    // O controle correto é por recarga de créditos.
+    if (isResellerProfile) return null
 
     if (!subscription.first_access_at) {
       return (
@@ -165,9 +195,49 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
     )
   }
 
+  const getResellerAccessBadge = () => {
+    if (!isResellerProfile) return null
+
+    if (resellerStatus === 'grace' || resellerAccessMode === 'user_only') {
+      const days = subscription?.reseller_grace_days_remaining ?? 0
+
+      return (
+        <div
+          className="flex items-center gap-1 rounded-full bg-yellow-500/15 px-2 py-0.5 text-xs font-normal text-yellow-400"
+          title="Modo tolerância: funções de revenda bloqueadas até nova recarga."
+        >
+          <AlertTriangle className="h-3 w-3" />
+          Tolerância {days}d
+        </div>
+      )
+    }
+
+    if (resellerStatus === 'blocked' || resellerAccessMode === 'blocked') {
+      return (
+        <div className="flex items-center gap-1 rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-normal text-destructive">
+          <AlertTriangle className="h-3 w-3" />
+          Bloqueado
+        </div>
+      )
+    }
+
+    const days = subscription?.reseller_days_until_recharge_deadline
+
+    return (
+      <div
+        className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-normal text-emerald-400"
+        title="Prazo para nova recarga de créditos da revenda."
+      >
+        <Clock className="h-3 w-3" />
+        {typeof days === 'number' ? `Recarga em ${days}d` : 'Revenda ativa'}
+      </div>
+    )
+  }
+
   const shouldShowRenewButton = () => {
     if (!subscription) return false
     if (userEmail === ADMIN_EMAIL) return false
+    if (isResellerProfile) return false
     if (!subscription.first_access_at) return false
     if (subscription.is_expired) return false
 
@@ -195,6 +265,13 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
         return
       }
 
+      const roleFromSubscription = subscription?.user_role
+
+      if (roleFromSubscription) {
+        setUserRole(roleFromSubscription)
+        return
+      }
+
       const { data: profile } = await supabase
         .from('user_profiles')
         .select('role')
@@ -215,7 +292,7 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
     })
 
     return () => subscription.unsubscribe()
-  }, [supabase])
+  }, [supabase, subscription?.user_role])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -389,12 +466,14 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
 
                 {getSubscriptionBadge()}
 
-                {isReseller && (
+                {isResellerProfile && (
                   <div className="hidden items-center gap-1 rounded-full bg-purple-500/15 px-2 py-0.5 text-xs font-normal text-purple-400 sm:flex">
                     <Store className="h-3 w-3" />
                     Revendedor
                   </div>
                 )}
+
+                {getResellerAccessBadge()}
 
                 {shouldShowRenewButton() && (
                   <Button
@@ -491,6 +570,13 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
           </div>
         )}
       </header>
+
+      {isResellerGrace && (
+        <div className="border-b border-yellow-500/30 bg-yellow-500/10 px-4 py-2 text-center text-xs text-yellow-500">
+          Sua revenda está em período de tolerância. Você pode usar o painel como usuário comum,
+          mas as funções de revenda ficam bloqueadas até uma nova recarga.
+        </div>
+      )}
 
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-6xl space-y-6 p-4 pb-24">

@@ -14,6 +14,7 @@ import {
   ChevronLeft,
   ChevronRight,
   MessageCircle,
+  Store,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SummaryCards } from '@/components/summary-cards'
@@ -25,6 +26,7 @@ import { QuickEntry } from '@/components/quick-entry'
 import { ConfigPage } from '@/components/config/config-page'
 import { AnalyticsPage } from '@/components/analytics/analytics-page'
 import { DailyRobotAssistant } from '@/components/daily-robot-assistant'
+import { ResellerClientsPanel } from '@/components/reseller/reseller-clients-panel'
 import { cn } from '@/lib/utils'
 import type { Transaction } from '@/lib/types'
 import { useSupabaseData } from '@/hooks/use-supabase-data'
@@ -49,14 +51,21 @@ interface CashFlowDashboardProps {
   subscription?: Subscription | null
 }
 
-type Tab = 'dashboard' | 'transacoes' | 'analytics' | 'configuracoes'
+type UserRole = 'admin' | 'reseller' | 'user'
+type Tab = 'dashboard' | 'clientes' | 'transacoes' | 'analytics' | 'configuracoes'
 
-const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
+const BASE_TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'transacoes', label: 'Transações', icon: List },
   { id: 'analytics', label: 'Analytics', icon: BarChart2 },
   { id: 'configuracoes', label: 'Configurações', icon: Settings },
 ]
+
+const RESELLER_TAB: { id: Tab; label: string; icon: React.ElementType } = {
+  id: 'clientes',
+  label: 'Meus Clientes',
+  icon: Store,
+}
 
 function formatDateBR(date: string | null | undefined) {
   if (!date) return 'data desconhecida'
@@ -77,11 +86,24 @@ function onlyNumbers(value: string) {
 export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
   const [isAdmin, setIsAdmin] = useState(false)
   const [userEmail, setUserEmail] = useState<string | null>(null)
+  const [userRole, setUserRole] = useState<UserRole>('user')
   const supabase = createClient()
 
   const today = new Date()
   const [selectedMonth, setSelectedMonth] = useState(today.getMonth())
   const [selectedYear, setSelectedYear] = useState(today.getFullYear())
+
+  const isReseller = userRole === 'reseller'
+
+  const tabs = useMemo(() => {
+    if (!isReseller) return BASE_TABS
+
+    return [
+      BASE_TABS[0],
+      RESELLER_TAB,
+      ...BASE_TABS.slice(1),
+    ]
+  }, [isReseller])
 
   const getSubscriptionBadge = () => {
     if (!subscription) return null
@@ -155,20 +177,45 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
   }
 
   useEffect(() => {
+    const loadUserContext = async (
+      authUser: { id: string; email?: string | null } | null | undefined
+    ) => {
+      const email = authUser?.email ?? null
+
+      setIsAdmin(email === ADMIN_EMAIL)
+      setUserEmail(email)
+
+      if (!authUser) {
+        setUserRole('user')
+        return
+      }
+
+      if (email === ADMIN_EMAIL) {
+        setUserRole('admin')
+        return
+      }
+
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('role')
+        .eq('id', authUser.id)
+        .single()
+
+      setUserRole((profile?.role as UserRole | undefined) || 'user')
+    }
+
     supabase.auth.getUser().then(({ data }) => {
-      setIsAdmin(data.user?.email === ADMIN_EMAIL)
-      setUserEmail(data.user?.email ?? null)
+      loadUserContext(data.user)
     })
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsAdmin(session?.user?.email === ADMIN_EMAIL)
-      setUserEmail(session?.user?.email ?? null)
+      loadUserContext(session?.user)
     })
 
     return () => subscription.unsubscribe()
-  }, [])
+  }, [supabase])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -230,6 +277,12 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
   const [editingTransaction, setEditingTransaction] =
     useState<Transaction | null>(null)
   const [activeTab, setActiveTab] = useState<Tab>('dashboard')
+
+  useEffect(() => {
+    if (activeTab === 'clientes' && !isReseller) {
+      setActiveTab('dashboard')
+    }
+  }, [activeTab, isReseller])
 
   const selectedMonthLabel = useMemo(() => {
     const monthName = new Date(selectedYear, selectedMonth, 1).toLocaleDateString(
@@ -336,6 +389,13 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
 
                 {getSubscriptionBadge()}
 
+                {isReseller && (
+                  <div className="hidden items-center gap-1 rounded-full bg-purple-500/15 px-2 py-0.5 text-xs font-normal text-purple-400 sm:flex">
+                    <Store className="h-3 w-3" />
+                    Revendedor
+                  </div>
+                )}
+
                 {shouldShowRenewButton() && (
                   <Button
                     type="button"
@@ -364,7 +424,7 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
           </div>
 
           <nav className="hidden sm:flex items-center gap-1">
-            {TABS.map(({ id, label, icon: Icon }) => (
+            {tabs.map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
                 onClick={() => setActiveTab(id)}
@@ -381,22 +441,24 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
             ))}
           </nav>
 
-          <Button
-            size="sm"
-            onClick={() => {
-              setEditingTransaction(null)
-              setDialogOpen(true)
-            }}
-            className="hidden sm:flex"
-            data-testid="new-transaction-btn"
-          >
-            <Plus className="mr-1 h-4 w-4" />
-            Nova Transação
-          </Button>
+          {activeTab !== 'clientes' && (
+            <Button
+              size="sm"
+              onClick={() => {
+                setEditingTransaction(null)
+                setDialogOpen(true)
+              }}
+              className="hidden sm:flex"
+              data-testid="new-transaction-btn"
+            >
+              <Plus className="mr-1 h-4 w-4" />
+              Nova Transação
+            </Button>
+          )}
         </div>
 
         <div className="sm:hidden flex border-t overflow-x-auto">
-          {TABS.map(({ id, label, icon: Icon }) => (
+          {tabs.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               onClick={() => setActiveTab(id)}
@@ -413,19 +475,21 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
           ))}
         </div>
 
-        <div className="sm:hidden fixed bottom-10 right-4 z-30">
-          <Button
-            size="sm"
-            onClick={() => {
-              setEditingTransaction(null)
-              setDialogOpen(true)
-            }}
-            className="rounded-full h-12 w-12 p-0 shadow-lg"
-            data-testid="new-transaction-btn-mobile"
-          >
-            <Plus className="h-5 w-5" />
-          </Button>
-        </div>
+        {activeTab !== 'clientes' && (
+          <div className="sm:hidden fixed bottom-10 right-4 z-30">
+            <Button
+              size="sm"
+              onClick={() => {
+                setEditingTransaction(null)
+                setDialogOpen(true)
+              }}
+              className="rounded-full h-12 w-12 p-0 shadow-lg"
+              data-testid="new-transaction-btn-mobile"
+            >
+              <Plus className="h-5 w-5" />
+            </Button>
+          </div>
+        )}
       </header>
 
       <main className="flex-1 overflow-y-auto">
@@ -477,6 +541,10 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
 
               <RevenueHeatmap transactions={transactions} />
             </>
+          )}
+
+          {activeTab === 'clientes' && isReseller && (
+            <ResellerClientsPanel />
           )}
 
           {activeTab === 'transacoes' && (

@@ -105,6 +105,15 @@ interface ResellerCreditLedgerEntry {
   created_at: string
 }
 
+interface ResellerSettings {
+  id: string
+  recharge_deadline_days: number
+  grace_days: number
+  updated_by: string | null
+  created_at: string
+  updated_at: string
+}
+
 interface AdminUser {
   id: string
   email: string | undefined
@@ -149,8 +158,8 @@ const CREDIT_TYPE_LABELS: Record<string, string> = {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000
-const RESELLER_ACTIVE_DAYS = 60
-const RESELLER_BLOCK_DAYS = 90
+const DEFAULT_RESELLER_ACTIVE_DAYS = 60
+const DEFAULT_RESELLER_GRACE_DAYS = 30
 
 function addDaysFromDate(dateStr: string | null | undefined, days: number) {
   if (!dateStr) return null
@@ -177,13 +186,20 @@ function formatDateOnlyFromDate(date: Date | null) {
   return date.toLocaleDateString('pt-BR')
 }
 
-function getResellerRechargeDeadline(wallet: ResellerWallet | null | undefined) {
+function getResellerRechargeDeadline(
+  wallet: ResellerWallet | null | undefined,
+  activeDays = DEFAULT_RESELLER_ACTIVE_DAYS
+) {
   if (!wallet) return null
 
-  return addDaysFromDate(wallet.last_recharge_at || wallet.created_at, RESELLER_ACTIVE_DAYS)
+  return addDaysFromDate(wallet.last_recharge_at || wallet.created_at, activeDays)
 }
 
-function getResellerGraceDeadline(wallet: ResellerWallet | null | undefined) {
+function getResellerGraceDeadline(
+  wallet: ResellerWallet | null | undefined,
+  activeDays = DEFAULT_RESELLER_ACTIVE_DAYS,
+  graceDays = DEFAULT_RESELLER_GRACE_DAYS
+) {
   if (!wallet) return null
 
   if (wallet.grace_until) {
@@ -192,7 +208,7 @@ function getResellerGraceDeadline(wallet: ResellerWallet | null | undefined) {
     if (!Number.isNaN(graceDate.getTime())) return graceDate
   }
 
-  return addDaysFromDate(wallet.last_recharge_at || wallet.created_at, RESELLER_BLOCK_DAYS)
+  return addDaysFromDate(wallet.last_recharge_at || wallet.created_at, activeDays + graceDays)
 }
 
 function getUserRole(u: AdminUser): UserRole {
@@ -240,6 +256,33 @@ export function AdminUsersPanel() {
   const [creditError, setCreditError] = useState('')
   const [creditSuccess, setCreditSuccess] = useState('')
 
+  // Configurações da revenda
+  const [settingsLoading, setSettingsLoading] = useState(false)
+  const [settingsSaving, setSettingsSaving] = useState(false)
+  const [resellerSettings, setResellerSettings] = useState<ResellerSettings | null>(null)
+  const [rechargeDeadlineDays, setRechargeDeadlineDays] = useState('60')
+  const [graceDays, setGraceDays] = useState('30')
+  const [settingsError, setSettingsError] = useState('')
+  const [settingsSuccess, setSettingsSuccess] = useState('')
+
+  // Alterar tipo de acesso
+  const [roleDialogOpen, setRoleDialogOpen] = useState(false)
+  const [roleUser, setRoleUser] = useState<AdminUser | null>(null)
+  const [targetRole, setTargetRole] = useState<UserRole>('user')
+  const [roleChanging, setRoleChanging] = useState(false)
+  const [roleError, setRoleError] = useState('')
+  const [roleSuccess, setRoleSuccess] = useState('')
+
+  const resellerRechargeDeadlineDays = Math.max(
+    1,
+    Number(rechargeDeadlineDays) || DEFAULT_RESELLER_ACTIVE_DAYS
+  )
+
+  const resellerGraceDays = Math.max(
+    0,
+    Number(graceDays) || DEFAULT_RESELLER_GRACE_DAYS
+  )
+
   const fetchUsers = useCallback(async () => {
     setLoadingUsers(true)
     setError('')
@@ -258,9 +301,34 @@ export function AdminUsersPanel() {
     }
   }, [])
 
+  const fetchResellerSettings = useCallback(async () => {
+    setSettingsLoading(true)
+    setSettingsError('')
+
+    try {
+      const res = await fetch('/api/admin/reseller-settings')
+      const json = await res.json()
+
+      if (!res.ok) {
+        setSettingsError(json.error || 'Erro ao carregar configurações da revenda.')
+        return
+      }
+
+      const settings = json.settings as ResellerSettings
+      setResellerSettings(settings)
+      setRechargeDeadlineDays(String(settings.recharge_deadline_days ?? 60))
+      setGraceDays(String(settings.grace_days ?? 30))
+    } catch {
+      setSettingsError('Erro ao conectar ao servidor de configurações.')
+    } finally {
+      setSettingsLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     fetchUsers()
-  }, [fetchUsers])
+    fetchResellerSettings()
+  }, [fetchUsers, fetchResellerSettings])
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -296,6 +364,108 @@ export function AdminUsersPanel() {
       setCreateError('Erro ao conectar ao servidor.')
     } finally {
       setCreating(false)
+    }
+  }
+
+  const handleSaveResellerSettings = async () => {
+    const rechargeDays = Number(rechargeDeadlineDays)
+    const toleranceDays = Number(graceDays)
+
+    if (!Number.isFinite(rechargeDays) || !Number.isInteger(rechargeDays) || rechargeDays <= 0) {
+      setSettingsError('Informe um prazo de recarga válido, em dias.')
+      return
+    }
+
+    if (!Number.isFinite(toleranceDays) || !Number.isInteger(toleranceDays) || toleranceDays < 0) {
+      setSettingsError('Informe uma tolerância válida, em dias.')
+      return
+    }
+
+    setSettingsSaving(true)
+    setSettingsError('')
+    setSettingsSuccess('')
+
+    try {
+      const res = await fetch('/api/admin/reseller-settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rechargeDeadlineDays: rechargeDays,
+          graceDays: toleranceDays,
+        }),
+      })
+
+      const json = await res.json()
+
+      if (!res.ok) {
+        setSettingsError(json.error || 'Erro ao salvar configurações da revenda.')
+        return
+      }
+
+      setResellerSettings(json.settings)
+      setSettingsSuccess('Configurações da revenda atualizadas com sucesso.')
+      await fetchUsers()
+
+      setTimeout(() => setSettingsSuccess(''), 2500)
+    } catch {
+      setSettingsError('Erro ao conectar ao servidor de configurações.')
+    } finally {
+      setSettingsSaving(false)
+    }
+  }
+
+  const openRoleDialog = (user: AdminUser) => {
+    const role = getUserRole(user)
+
+    setRoleUser(user)
+    setTargetRole(role === 'reseller' ? 'user' : 'reseller')
+    setRoleError('')
+    setRoleSuccess('')
+    setRoleDialogOpen(true)
+  }
+
+  const resetRoleDialog = () => {
+    setRoleUser(null)
+    setTargetRole('user')
+    setRoleError('')
+    setRoleSuccess('')
+  }
+
+  const handleChangeUserRole = async () => {
+    if (!roleUser) return
+
+    setRoleChanging(true)
+    setRoleError('')
+    setRoleSuccess('')
+
+    try {
+      const res = await fetch('/api/admin/user-role', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: roleUser.id,
+          role: targetRole,
+        }),
+      })
+
+      const json = await res.json()
+
+      if (!res.ok) {
+        setRoleError(json.error || 'Erro ao alterar tipo de acesso.')
+        return
+      }
+
+      setRoleSuccess(json.message || 'Tipo de acesso alterado com sucesso.')
+      await fetchUsers()
+
+      setTimeout(() => {
+        setRoleDialogOpen(false)
+        resetRoleDialog()
+      }, 1500)
+    } catch {
+      setRoleError('Erro ao conectar ao servidor.')
+    } finally {
+      setRoleChanging(false)
     }
   }
 
@@ -553,7 +723,7 @@ export function AdminUsersPanel() {
     }
 
     if (wallet.status === 'grace') {
-      const graceDaysRemaining = getDaysUntil(getResellerGraceDeadline(wallet))
+      const graceDaysRemaining = getDaysUntil(getResellerGraceDeadline(wallet, resellerRechargeDeadlineDays, resellerGraceDays))
 
       return (
         <Badge className="text-xs shrink-0 bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
@@ -563,7 +733,7 @@ export function AdminUsersPanel() {
       )
     }
 
-    const rechargeDaysRemaining = getDaysUntil(getResellerRechargeDeadline(wallet))
+    const rechargeDaysRemaining = getDaysUntil(getResellerRechargeDeadline(wallet, resellerRechargeDeadlineDays))
 
     return (
       <Badge className="text-xs shrink-0 bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
@@ -798,6 +968,104 @@ export function AdminUsersPanel() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-medium">
+            Configurações da Revenda
+          </CardTitle>
+          <CardDescription>
+            Defina o prazo máximo entre recargas e a tolerância antes do bloqueio.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {settingsLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Carregando configurações...
+            </div>
+          ) : (
+            <>
+              <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+                <div className="space-y-2">
+                  <Label htmlFor="recharge-deadline-days">Prazo máximo entre recargas</Label>
+                  <Input
+                    id="recharge-deadline-days"
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={rechargeDeadlineDays}
+                    onChange={(e) => setRechargeDeadlineDays(e.target.value)}
+                    disabled={settingsSaving}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Hoje usado para calcular “Recarga em Xd”.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="reseller-grace-days">Tolerância após o prazo</Label>
+                  <Input
+                    id="reseller-grace-days"
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={graceDays}
+                    onChange={(e) => setGraceDays(e.target.value)}
+                    disabled={settingsSaving}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Após a tolerância, a revenda é bloqueada.
+                  </p>
+                </div>
+
+                <Button
+                  onClick={handleSaveResellerSettings}
+                  disabled={settingsSaving}
+                  className="md:min-w-[120px]"
+                >
+                  {settingsSaving ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Salvando...
+                    </>
+                  ) : (
+                    'Salvar'
+                  )}
+                </Button>
+              </div>
+
+              <div className="rounded-md bg-muted/40 p-3 text-xs text-muted-foreground">
+                Regra atual: revendedor fica ativo por{' '}
+                <strong>{resellerRechargeDeadlineDays} dia(s)</strong> após a última recarga,
+                depois entra em tolerância por{' '}
+                <strong>{resellerGraceDays} dia(s)</strong>. Após isso, o painel é bloqueado
+                até uma nova recarga.
+              </div>
+            </>
+          )}
+
+          {settingsError && (
+            <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              {settingsError}
+            </div>
+          )}
+
+          {settingsSuccess && (
+            <div className="flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600">
+              <Check className="h-4 w-4 shrink-0" />
+              {settingsSuccess}
+            </div>
+          )}
+
+          {resellerSettings?.updated_at && (
+            <p className="text-xs text-muted-foreground">
+              Última atualização: {formatDate(resellerSettings.updated_at)}
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium">
             Usuários cadastrados
           </CardTitle>
           {!loadingUsers && (
@@ -852,7 +1120,7 @@ export function AdminUsersPanel() {
                         {role === 'reseller' && u.reseller_wallet && (
                           <span className="flex items-center gap-1">
                             <Clock className="h-3 w-3" />
-                            Próxima recarga: {formatDateOnlyFromDate(getResellerRechargeDeadline(u.reseller_wallet))}
+                            Próxima recarga: {formatDateOnlyFromDate(getResellerRechargeDeadline(u.reseller_wallet, resellerRechargeDeadlineDays))}
                           </span>
                         )}
                         {u.last_sign_in_at && (
@@ -875,6 +1143,22 @@ export function AdminUsersPanel() {
                             >
                               <Coins className="h-3.5 w-3.5 mr-1.5" />
                               <span className="hidden sm:inline">Créditos</span>
+                            </Button>
+                          )}
+
+                          {(role === 'user' || role === 'reseller') && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openRoleDialog(u)}
+                              className="h-8"
+                            >
+                              {role === 'reseller' ? (
+                                <User className="h-3.5 w-3.5 mr-1.5" />
+                              ) : (
+                                <Store className="h-3.5 w-3.5 mr-1.5" />
+                              )}
+                              <span className="hidden sm:inline">Tipo</span>
                             </Button>
                           )}
 
@@ -934,6 +1218,90 @@ export function AdminUsersPanel() {
         </CardContent>
       </Card>
 
+      {/* Dialog de alteração de tipo de acesso */}
+      <Dialog
+        open={roleDialogOpen}
+        onOpenChange={(open) => {
+          setRoleDialogOpen(open)
+          if (!open) resetRoleDialog()
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Alterar Tipo de Acesso</DialogTitle>
+            <DialogDescription>
+              Altere o tipo da conta <strong>{roleUser?.email}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="target-role">Novo tipo de acesso</Label>
+              <Select value={targetRole} onValueChange={(value) => setTargetRole(value as UserRole)}>
+                <SelectTrigger id="target-role">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="user">Usuário comum</SelectItem>
+                  <SelectItem value="reseller">Revendedor</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="rounded-md bg-muted/50 p-3 text-sm text-muted-foreground">
+              {targetRole === 'reseller' ? (
+                <p>
+                  Ao transformar em revendedor, o sistema cria/ativa uma carteira de créditos
+                  com saldo inicial 0 e inicia o prazo de recarga a partir de hoje.
+                </p>
+              ) : (
+                <p>
+                  Um revendedor só poderá virar usuário comum se não tiver nenhum cliente
+                  vinculado. Se houver clientes, a alteração será bloqueada automaticamente.
+                </p>
+              )}
+            </div>
+
+            {roleError && (
+              <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                {roleError}
+              </div>
+            )}
+
+            {roleSuccess && (
+              <div className="flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600">
+                <Check className="h-4 w-4 shrink-0" />
+                {roleSuccess}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setRoleDialogOpen(false)}
+              disabled={roleChanging}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleChangeUserRole}
+              disabled={roleChanging || !roleUser}
+            >
+              {roleChanging ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Alterando...
+                </>
+              ) : (
+                'Salvar Tipo'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Dialog de créditos do revendedor */}
       <Dialog
         open={creditsDialogOpen}
@@ -976,7 +1344,7 @@ export function AdminUsersPanel() {
               <div>
                 <p className="text-xs text-muted-foreground">Próxima recarga</p>
                 <p className="font-semibold text-foreground">
-                  {formatDateOnlyFromDate(getResellerRechargeDeadline(creditWallet || creditsUser?.reseller_wallet))}
+                  {formatDateOnlyFromDate(getResellerRechargeDeadline(creditWallet || creditsUser?.reseller_wallet, resellerRechargeDeadlineDays))}
                 </p>
               </div>
             </div>

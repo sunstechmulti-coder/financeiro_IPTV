@@ -16,6 +16,7 @@ import {
   UserPlus,
   Users,
   Wallet,
+  RotateCw,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -31,6 +32,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 type ResellerStatus = 'active' | 'grace' | 'blocked'
 
@@ -64,11 +72,26 @@ interface ResellerClient {
   subscription: ClientSubscription | null
 }
 
+interface RenewalPlan {
+  id: string
+  label: string
+  days: number
+  credits: number
+}
+
 const STATUS_LABELS: Record<ResellerStatus, string> = {
   active: 'Ativo',
   grace: 'Tolerância',
   blocked: 'Bloqueado',
 }
+
+const RENEWAL_PLANS: RenewalPlan[] = [
+  { id: '1_month', label: '1 mês', days: 30, credits: 1 },
+  { id: '2_months', label: '2 meses', days: 60, credits: 2 },
+  { id: '3_months', label: '3 meses', days: 90, credits: 3 },
+  { id: '6_months', label: '6 meses', days: 180, credits: 5 },
+  { id: '12_months', label: '12 meses', days: 365, credits: 10 },
+]
 
 function formatDate(dateStr: string | null | undefined) {
   if (!dateStr) return '—'
@@ -168,6 +191,13 @@ export function ResellerClientsPanel() {
   const [createError, setCreateError] = useState('')
   const [createSuccess, setCreateSuccess] = useState('')
 
+  const [renewDialogOpen, setRenewDialogOpen] = useState(false)
+  const [renewingClient, setRenewingClient] = useState<ResellerClient | null>(null)
+  const [selectedPlanId, setSelectedPlanId] = useState('1_month')
+  const [renewing, setRenewing] = useState(false)
+  const [renewError, setRenewError] = useState('')
+  const [renewSuccess, setRenewSuccess] = useState('')
+
   const fetchClients = useCallback(async (isRefresh = false) => {
     if (isRefresh) {
       setRefreshing(true)
@@ -226,6 +256,13 @@ export function ResellerClientsPanel() {
   }, [clients])
 
   const canCreateClient = wallet?.status !== 'grace' && wallet?.status !== 'blocked'
+  const canRenewClient = wallet?.status === 'active'
+
+  const selectedPlan = useMemo(() => {
+    return RENEWAL_PLANS.find((plan) => plan.id === selectedPlanId) || RENEWAL_PLANS[0]
+  }, [selectedPlanId])
+
+  const hasEnoughCredits = (wallet?.balance ?? 0) >= selectedPlan.credits
 
   const handleCreateClient = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -267,6 +304,57 @@ export function ResellerClientsPanel() {
     }
   }
 
+  const openRenewDialog = (client: ResellerClient) => {
+    setRenewingClient(client)
+    setSelectedPlanId('1_month')
+    setRenewError('')
+    setRenewSuccess('')
+    setRenewDialogOpen(true)
+  }
+
+  const handleRenewClient = async () => {
+    if (!renewingClient) return
+
+    setRenewError('')
+    setRenewSuccess('')
+    setRenewing(true)
+
+    try {
+      const res = await fetch('/api/reseller/renew-client', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId: renewingClient.id,
+          planId: selectedPlanId,
+        }),
+      })
+
+      const json = await res.json()
+
+      if (!res.ok) {
+        setRenewError(json.error || 'Erro ao renovar cliente.')
+        return
+      }
+
+      setRenewSuccess(
+        `Cliente renovado por ${json.plan.label}. Foram usados ${json.plan.credits} crédito(s).`
+      )
+
+      await fetchClients(true)
+
+      setTimeout(() => {
+        setRenewDialogOpen(false)
+        setRenewingClient(null)
+        setSelectedPlanId('1_month')
+        setRenewSuccess('')
+      }, 1500)
+    } catch {
+      setRenewError('Erro ao conectar ao servidor.')
+    } finally {
+      setRenewing(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16 text-muted-foreground">
@@ -285,7 +373,7 @@ export function ResellerClientsPanel() {
             Meus Clientes
           </h3>
           <p className="text-sm text-muted-foreground">
-            Cadastre e acompanhe os clientes vinculados à sua revenda.
+            Cadastre, acompanhe e renove os clientes vinculados à sua revenda.
           </p>
         </div>
 
@@ -416,7 +504,7 @@ export function ResellerClientsPanel() {
       {!canCreateClient && (
         <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-500">
           Sua revenda está em modo {wallet?.status === 'grace' ? 'tolerância' : 'bloqueado'}.
-          Você pode acompanhar seus clientes, mas não pode criar novos até regularizar sua recarga.
+          Você pode acompanhar seus clientes, mas não pode criar novos ou renovar até regularizar sua recarga.
         </div>
       )}
 
@@ -531,8 +619,16 @@ export function ResellerClientsPanel() {
                     </div>
                   </div>
 
-                  <div className="text-xs text-muted-foreground">
-                    Renovação por créditos será adicionada na próxima etapa.
+                  <div className="flex justify-start sm:justify-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openRenewDialog(client)}
+                      disabled={!canRenewClient}
+                    >
+                      <RotateCw className="mr-2 h-3.5 w-3.5" />
+                      Renovar
+                    </Button>
                   </div>
                 </div>
               ))}
@@ -540,6 +636,116 @@ export function ResellerClientsPanel() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog
+        open={renewDialogOpen}
+        onOpenChange={(open) => {
+          setRenewDialogOpen(open)
+
+          if (!open) {
+            setRenewingClient(null)
+            setSelectedPlanId('1_month')
+            setRenewError('')
+            setRenewSuccess('')
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Renovar Cliente</DialogTitle>
+            <DialogDescription>
+              Use créditos da sua carteira para renovar o acesso do cliente.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="rounded-lg border bg-muted/30 p-3 text-sm">
+              <p className="font-medium">{renewingClient?.email}</p>
+              <p className="text-xs text-muted-foreground">
+                Vencimento atual: {formatDate(renewingClient?.subscription?.expires_at)}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 rounded-lg border bg-background p-3 text-sm">
+              <div>
+                <p className="text-xs text-muted-foreground">Saldo atual</p>
+                <p className="font-semibold">{wallet?.balance ?? 0} crédito(s)</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Status</p>
+                <div className="mt-1">{getWalletStatusBadge(wallet)}</div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="renewal-plan">Plano de renovação</Label>
+              <Select value={selectedPlanId} onValueChange={setSelectedPlanId}>
+                <SelectTrigger id="renewal-plan">
+                  <SelectValue placeholder="Selecione um plano" />
+                </SelectTrigger>
+                <SelectContent>
+                  {RENEWAL_PLANS.map((plan) => (
+                    <SelectItem key={plan.id} value={plan.id}>
+                      {plan.label} · {plan.credits} crédito(s)
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                O plano selecionado adiciona {selectedPlan.days} dias e consome{' '}
+                <strong>{selectedPlan.credits} crédito(s)</strong>.
+              </p>
+            </div>
+
+            {!hasEnoughCredits && (
+              <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                Saldo insuficiente para este plano.
+              </div>
+            )}
+
+            {renewError && (
+              <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                {renewError}
+              </div>
+            )}
+
+            {renewSuccess && (
+              <div className="flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600">
+                <Check className="h-4 w-4 shrink-0" />
+                {renewSuccess}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setRenewDialogOpen(false)}
+              disabled={renewing}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleRenewClient}
+              disabled={renewing || !canRenewClient || !hasEnoughCredits}
+            >
+              {renewing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Renovando...
+                </>
+              ) : (
+                <>
+                  <RotateCw className="mr-2 h-4 w-4" />
+                  Renovar
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

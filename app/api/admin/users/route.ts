@@ -5,6 +5,25 @@ import { cookies } from 'next/headers'
 
 const ADMIN_EMAIL = 'admin1@sunstech.com'
 
+type UserRole = 'admin' | 'reseller' | 'user'
+
+interface UserProfile {
+  id: string
+  email: string | null
+  role: UserRole
+  created_by: string | null
+  reseller_id: string | null
+  is_active: boolean
+}
+
+interface ResellerWallet {
+  reseller_id: string
+  balance: number
+  last_recharge_at: string | null
+  grace_until: string | null
+  status: 'active' | 'grace' | 'blocked'
+}
+
 async function getSessionUser() {
   const cookieStore = await cookies()
   const supabase = createServerClient(
@@ -27,7 +46,12 @@ async function getSessionUser() {
   return user
 }
 
-// GET /api/admin/users — lista todos os usuários com subscriptions
+function getSafeRole(value: unknown): UserRole {
+  if (value === 'reseller') return 'reseller'
+  return 'user'
+}
+
+// GET /api/admin/users — lista todos os usuários com subscriptions, perfil e carteira de revendedor
 export async function GET() {
   const user = await getSessionUser()
   if (!user || user.email !== ADMIN_EMAIL) {
@@ -50,18 +74,55 @@ export async function GET() {
     (subscriptions || []).map((s: { user_id: string }) => [s.user_id, s])
   )
 
-  const users = data.users.map((u) => ({
-    id: u.id,
-    email: u.email,
-    created_at: u.created_at,
-    last_sign_in_at: u.last_sign_in_at,
-    subscription: subscriptionMap.get(u.id) || null,
-  }))
+  // Buscar perfis de todos os usuários
+  const { data: profiles } = await admin
+    .from('user_profiles')
+    .select('id, email, role, created_by, reseller_id, is_active')
+
+  const profileMap = new Map(
+    ((profiles || []) as UserProfile[]).map((profile) => [profile.id, profile])
+  )
+
+  // Buscar carteiras dos revendedores
+  const { data: wallets } = await admin
+    .from('reseller_wallets')
+    .select('reseller_id, balance, last_recharge_at, grace_until, status')
+
+  const walletMap = new Map(
+    ((wallets || []) as ResellerWallet[]).map((wallet) => [
+      wallet.reseller_id,
+      wallet,
+    ])
+  )
+
+  const users = data.users.map((u) => {
+    const profile = profileMap.get(u.id)
+    const fallbackRole: UserRole = u.email === ADMIN_EMAIL ? 'admin' : 'user'
+    const role = profile?.role || fallbackRole
+
+    return {
+      id: u.id,
+      email: u.email,
+      created_at: u.created_at,
+      last_sign_in_at: u.last_sign_in_at,
+      role,
+      profile: profile || {
+        id: u.id,
+        email: u.email || null,
+        role,
+        created_by: null,
+        reseller_id: null,
+        is_active: true,
+      },
+      reseller_wallet: walletMap.get(u.id) || null,
+      subscription: subscriptionMap.get(u.id) || null,
+    }
+  })
 
   return NextResponse.json({ users })
 }
 
-// POST /api/admin/users — cria um novo usuário
+// POST /api/admin/users — cria um novo usuário comum ou revendedor
 export async function POST(req: NextRequest) {
   const user = await getSessionUser()
   if (!user || user.email !== ADMIN_EMAIL) {
@@ -70,6 +131,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json()
   const { email, password } = body
+  const role = getSafeRole(body.role || body.userRole)
 
   if (!email || !password) {
     return NextResponse.json({ error: 'Email e senha são obrigatórios.' }, { status: 400 })
@@ -79,9 +141,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'A senha deve ter pelo menos 6 caracteres.' }, { status: 400 })
   }
 
+  if (!['user', 'reseller'].includes(role)) {
+    return NextResponse.json({ error: 'Tipo de usuário inválido.' }, { status: 400 })
+  }
+
   const admin = createAdminClient()
+  const normalizedEmail = email.toLowerCase().trim()
+
   const { data, error } = await admin.auth.admin.createUser({
-    email: email.toLowerCase().trim(),
+    email: normalizedEmail,
     password,
     email_confirm: true,
   })
@@ -93,21 +161,62 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  const createdUserId = data.user.id
+  const now = new Date().toISOString()
+
   // Criar subscription trial para o novo usuário (30 dias a partir do primeiro acesso)
-  await admin.from('user_subscriptions').insert({
-    user_id: data.user.id,
+  const { error: subscriptionError } = await admin.from('user_subscriptions').insert({
+    user_id: createdUserId,
     plan_type: 'trial',
-    started_at: new Date().toISOString(),
+    started_at: now,
     expires_at: null, // Será definido no primeiro acesso
     first_access_at: null,
     is_active: true,
   })
+
+  if (subscriptionError) {
+    await admin.auth.admin.deleteUser(createdUserId)
+    return NextResponse.json({ error: subscriptionError.message }, { status: 500 })
+  }
+
+  // Criar/atualizar perfil do usuário
+  const { error: profileError } = await admin.from('user_profiles').upsert({
+    id: createdUserId,
+    email: data.user.email || normalizedEmail,
+    role,
+    created_by: user.id,
+    reseller_id: null,
+    is_active: true,
+    updated_at: now,
+  })
+
+  if (profileError) {
+    await admin.auth.admin.deleteUser(createdUserId)
+    return NextResponse.json({ error: profileError.message }, { status: 500 })
+  }
+
+  // Se for revendedor, criar carteira zerada
+  if (role === 'reseller') {
+    const { error: walletError } = await admin.from('reseller_wallets').insert({
+      reseller_id: createdUserId,
+      balance: 0,
+      last_recharge_at: null,
+      grace_until: null,
+      status: 'active',
+    })
+
+    if (walletError) {
+      await admin.auth.admin.deleteUser(createdUserId)
+      return NextResponse.json({ error: walletError.message }, { status: 500 })
+    }
+  }
 
   return NextResponse.json({
     user: {
       id: data.user.id,
       email: data.user.email,
       created_at: data.user.created_at,
+      role,
     },
   })
 }
@@ -219,8 +328,8 @@ export async function PATCH(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ 
-    success: true, 
+  return NextResponse.json({
+    success: true,
     expiresAt: expiresAt.toISOString(),
     daysAdded,
   })

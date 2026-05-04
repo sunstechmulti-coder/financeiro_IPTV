@@ -12,10 +12,18 @@ const DEFAULT_RESELLER_GRACE_DAYS = 30
 
 type UserRole = 'admin' | 'reseller' | 'user'
 type ResellerStatus = 'active' | 'grace' | 'blocked'
+type RenewalContactRole = 'admin' | 'reseller'
 
 interface ResellerSettings {
   recharge_deadline_days: number
   grace_days: number
+}
+
+interface RenewalContact {
+  renewal_whatsapp_number: string | null
+  renewal_whatsapp_owner_email: string | null
+  renewal_whatsapp_owner_role: RenewalContactRole
+  renewal_whatsapp_missing: boolean
 }
 
 async function getSessionUser() {
@@ -43,6 +51,10 @@ async function getSessionUser() {
   } = await supabase.auth.getUser()
 
   return user
+}
+
+function onlyNumbers(value: string | null | undefined) {
+  return String(value || '').replace(/\D/g, '')
 }
 
 function addDays(date: Date, days: number) {
@@ -136,6 +148,54 @@ async function getOrCreateProfile(
   if (error) return null
 
   return newProfile
+}
+
+async function getAdminProfile(admin: ReturnType<typeof createAdminClient>) {
+  const { data } = await admin
+    .from('user_profiles')
+    .select('id, email, role, whatsapp_number')
+    .eq('email', ADMIN_EMAIL)
+    .single()
+
+  return data || null
+}
+
+async function getRenewalContact(
+  admin: ReturnType<typeof createAdminClient>,
+  profile: any
+): Promise<RenewalContact> {
+  let ownerRole: RenewalContactRole = 'admin'
+  let ownerEmail: string | null = ADMIN_EMAIL
+  let whatsappNumber: string | null = null
+
+  if (profile?.role === 'user' && profile?.reseller_id) {
+    const { data: resellerProfile } = await admin
+      .from('user_profiles')
+      .select('id, email, role, is_active, whatsapp_number')
+      .eq('id', profile.reseller_id)
+      .single()
+
+    if (resellerProfile?.role === 'reseller' && resellerProfile?.is_active) {
+      ownerRole = 'reseller'
+      ownerEmail = resellerProfile.email || null
+      whatsappNumber = onlyNumbers(resellerProfile.whatsapp_number)
+    }
+  }
+
+  if (!whatsappNumber) {
+    const adminProfile = await getAdminProfile(admin)
+
+    ownerRole = 'admin'
+    ownerEmail = adminProfile?.email || ADMIN_EMAIL
+    whatsappNumber = onlyNumbers(adminProfile?.whatsapp_number)
+  }
+
+  return {
+    renewal_whatsapp_number: whatsappNumber || null,
+    renewal_whatsapp_owner_email: ownerEmail,
+    renewal_whatsapp_owner_role: ownerRole,
+    renewal_whatsapp_missing: !whatsappNumber,
+  }
 }
 
 function calculateResellerStatus(
@@ -317,6 +377,8 @@ export async function GET() {
 
   // Admin nunca expira
   if (user.email === ADMIN_EMAIL) {
+    const adminProfile = await getAdminProfile(admin)
+
     return NextResponse.json({
       subscription: {
         id: 'admin',
@@ -330,12 +392,17 @@ export async function GET() {
         days_remaining: 999999,
         user_role: 'admin',
         access_mode: 'admin',
+        renewal_whatsapp_number: onlyNumbers(adminProfile?.whatsapp_number) || null,
+        renewal_whatsapp_owner_email: adminProfile?.email || ADMIN_EMAIL,
+        renewal_whatsapp_owner_role: 'admin',
+        renewal_whatsapp_missing: !onlyNumbers(adminProfile?.whatsapp_number),
       },
     })
   }
 
   const profile = await getOrCreateProfile(admin, user)
   const userRole: UserRole = (profile?.role as UserRole) || 'user'
+  const renewalContact = await getRenewalContact(admin, profile)
 
   const resellerSettings = await getResellerSettings(admin)
 
@@ -375,6 +442,7 @@ export async function GET() {
         user_role: 'reseller',
         access_mode: 'blocked',
         ...resellerExtraFields,
+        ...renewalContact,
         reseller_message:
           'Sua revenda está bloqueada por falta de recarga. Faça uma nova recarga para reativar o painel.',
       },
@@ -416,6 +484,7 @@ export async function GET() {
         user_role: userRole,
         access_mode: accessMode,
         ...resellerExtraFields,
+        ...renewalContact,
       },
     })
   }
@@ -447,6 +516,7 @@ export async function GET() {
         user_role: userRole,
         access_mode: accessMode,
         ...resellerExtraFields,
+        ...renewalContact,
       },
       firstAccess: true,
     })
@@ -472,6 +542,7 @@ export async function GET() {
       user_role: userRole,
       access_mode: accessMode,
       ...resellerExtraFields,
+      ...renewalContact,
     },
   })
 }

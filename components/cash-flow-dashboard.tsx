@@ -528,6 +528,12 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
         </div>
       </main>
 
+      <footer className="border-t border-border/40 bg-background/80 px-4 py-4 pb-20 text-center text-[11px] leading-relaxed text-muted-foreground sm:pb-4">
+        <p>Versão 1.0.0</p>
+        <p>© 2026 Cash Flow.</p>
+        <p>Desenvolvido por Sun&apos;s Tech.</p>
+      </footer>
+
       <TransactionDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}

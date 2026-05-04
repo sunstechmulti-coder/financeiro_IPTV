@@ -10,6 +10,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
 
 const ADMIN_WHATSAPP = process.env.NEXT_PUBLIC_ADMIN_WHATSAPP || '5541984119131'
+const APP_VERSION = '1.0.0'
 
 interface Subscription {
   id: string
@@ -267,7 +268,7 @@ export function AuthGate({ children, onUserChange, onSubscriptionChange }: AuthG
 
   // Login card
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
       <Card className="w-full max-w-lg">
         <CardHeader className="text-center">
           <div className="mx-auto mb-2 flex items-center justify-center overflow-hidden">
@@ -330,6 +331,11 @@ export function AuthGate({ children, onUserChange, onSubscriptionChange }: AuthG
           </form>
         </CardContent>
       </Card>
+
+      <footer className="mt-4 text-center text-[11px] leading-relaxed text-muted-foreground">
+        <p>Versão {APP_VERSION}</p>
+        <p>© 2026 Cash Flow · Desenvolvido por Sun&apos;s Tech</p>
+      </footer>
     </div>
   )
 }

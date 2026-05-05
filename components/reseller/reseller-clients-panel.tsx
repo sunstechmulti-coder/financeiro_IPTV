@@ -609,29 +609,14 @@ export function ResellerClientsPanel() {
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <Card>
-          <CardContent className="flex items-center justify-between gap-3 p-4">
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-purple-500/10 p-2 text-purple-400">
-                <Wallet className="h-4 w-4" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Créditos</p>
-                <p className="text-lg font-semibold">{walletBalance}</p>
-              </div>
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="rounded-lg bg-purple-500/10 p-2 text-purple-400">
+              <Wallet className="h-4 w-4" />
             </div>
-
-            {walletBalance <= 0 && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleRequestRecharge}
-                disabled={!rechargeWhatsappUrl}
-                className="h-8 px-2 text-xs"
-              >
-                <MessageCircle className="mr-1.5 h-3.5 w-3.5" />
-                Recarga
-              </Button>
-            )}
+            <div>
+              <p className="text-xs text-muted-foreground">Créditos</p>
+              <p className="text-lg font-semibold">{walletBalance}</p>
+            </div>
           </CardContent>
         </Card>
 

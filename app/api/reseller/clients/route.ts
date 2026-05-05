@@ -78,6 +78,39 @@ async function getCurrentProfile(userId: string, email?: string | null) {
   return newProfile
 }
 
+async function getAdminContact() {
+  const admin = createAdminClient()
+
+  const { data: adminByEmail } = await admin
+    .from('user_profiles')
+    .select('id, email, whatsapp_number')
+    .eq('email', ADMIN_EMAIL)
+    .maybeSingle()
+
+  if (adminByEmail) {
+    return {
+      id: adminByEmail.id,
+      email: adminByEmail.email,
+      whatsappNumber: adminByEmail.whatsapp_number || null,
+    }
+  }
+
+  const { data: adminsByRole } = await admin
+    .from('user_profiles')
+    .select('id, email, whatsapp_number')
+    .eq('role', 'admin')
+    .order('created_at', { ascending: true })
+    .limit(1)
+
+  const adminProfile = adminsByRole?.[0] || null
+
+  return {
+    id: adminProfile?.id || null,
+    email: adminProfile?.email || null,
+    whatsappNumber: adminProfile?.whatsapp_number || null,
+  }
+}
+
 async function requireResellerOrAdmin() {
   const user = await getSessionUser()
 
@@ -274,11 +307,13 @@ export async function GET(req: NextRequest) {
   })
 
   const wallet = await getResellerWalletStatus(resellerId)
+  const adminContact = await getAdminContact()
 
   return NextResponse.json({
     reseller: resellerProfile,
     wallet,
     clients,
+    adminContact,
   })
 }
 

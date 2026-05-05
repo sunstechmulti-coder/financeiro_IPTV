@@ -11,7 +11,6 @@ import type {
   ActivationProduct,
   ActivationTransaction,
   RevendaGrupo,
-  RevendaFaixa,
 } from '@/lib/types'
 
 // Hook to manage all Supabase data with real-time sync
@@ -32,116 +31,131 @@ export function useSupabaseData() {
 
   // Fetch all data
   const fetchAllData = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser()
+    if (isMounted.current) setLoading(true)
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
     if (!user) {
-      if (isMounted.current) setLoading(false)
+      if (isMounted.current) {
+        setUserId(null)
+        setTransactions([])
+        setServidores([])
+        setPlanos([])
+        setSaidasRapidas([])
+        setCreditMovements([])
+        setActivationProducts([])
+        setActivationTransactions([])
+        setRevendaGrupos([])
+        setLoading(false)
+      }
       return
     }
+
     if (isMounted.current) setUserId(user.id)
 
     // Fetch servidores
     const { data: servidoresData } = await supabase
       .from('servidores')
       .select('*')
+      .eq('user_id', user.id)
       .order('nome')
 
-    if (servidoresData && isMounted.current) {
-      setServidores(servidoresData.map(mapServidorFromDB))
+    if (isMounted.current) {
+      setServidores((servidoresData || []).map(mapServidorFromDB))
     }
 
     // Fetch transactions
     const { data: transactionsData } = await supabase
       .from('transactions')
       .select('*')
+      .eq('user_id', user.id)
       .order('created_at', { ascending: false })
 
-    if (transactionsData && isMounted.current) {
-      setTransactions(transactionsData.map(mapTransactionFromDB))
+    if (isMounted.current) {
+      setTransactions((transactionsData || []).map(mapTransactionFromDB))
     }
 
     // Fetch planos
     const { data: planosData } = await supabase
       .from('planos')
       .select('*')
+      .eq('user_id', user.id)
       .order('codigo')
 
-    if (planosData && isMounted.current) {
-      setPlanos(planosData.map(mapPlanoFromDB))
+    if (isMounted.current) {
+      setPlanos((planosData || []).map(mapPlanoFromDB))
     }
 
     // Fetch saidas rapidas
     const { data: saidasData } = await supabase
       .from('saidas_rapidas')
       .select('*')
+      .eq('user_id', user.id)
       .order('nome')
 
-    if (saidasData && isMounted.current) {
-      setSaidasRapidas(saidasData.map(mapSaidaRapidaFromDB))
+    if (isMounted.current) {
+      setSaidasRapidas((saidasData || []).map(mapSaidaRapidaFromDB))
     }
 
     // Fetch credit movements
     const { data: movementsData } = await supabase
       .from('credit_movements')
       .select('*')
+      .eq('user_id', user.id)
       .order('date', { ascending: false })
 
-    if (movementsData && isMounted.current) {
-      setCreditMovements(movementsData.map(mapCreditMovementFromDB))
+    if (isMounted.current) {
+      setCreditMovements((movementsData || []).map(mapCreditMovementFromDB))
     }
 
     // Fetch activation products
     const { data: productsData } = await supabase
       .from('activation_products')
       .select('*')
+      .eq('user_id', user.id)
       .order('nome')
 
-    if (productsData && isMounted.current) {
-      setActivationProducts(productsData.map(mapActivationProductFromDB))
+    if (isMounted.current) {
+      setActivationProducts((productsData || []).map(mapActivationProductFromDB))
     }
 
     // Fetch activation transactions
     const { data: actTxData } = await supabase
       .from('activation_transactions')
       .select('*')
+      .eq('user_id', user.id)
       .order('created_at', { ascending: false })
 
-    if (actTxData && isMounted.current) {
-      setActivationTransactions(actTxData.map(mapActivationTransactionFromDB))
+    if (isMounted.current) {
+      setActivationTransactions((actTxData || []).map(mapActivationTransactionFromDB))
     }
 
     // Fetch revenda grupos
     const { data: revendaData } = await supabase
       .from('revenda_grupos')
       .select('*')
+      .eq('user_id', user.id)
       .order('nome')
 
-    if (revendaData && isMounted.current) {
-      setRevendaGrupos(revendaData.map((r: Record<string, unknown>) => ({
-        id: r.id as string,
-        nome: r.nome as string,
-        servidorIds: (r.servidor_ids as string[]) || [],
-        faixas: ((r.faixas as Array<Record<string, number>>) || []).map(f => ({
-          min: f.min,
-          max: f.max,
-          preco: f.preco,
-        })),
-      })))
+    if (isMounted.current) {
+      setRevendaGrupos(
+        (revendaData || []).map((r: Record<string, unknown>) => ({
+          id: r.id as string,
+          nome: r.nome as string,
+          servidorIds: (r.servidor_ids as string[]) || [],
+          faixas: ((r.faixas as Array<Record<string, number>>) || []).map(f => ({
+            min: f.min,
+            max: f.max,
+            preco: f.preco,
+          })),
+        }))
+      )
     }
 
     if (isMounted.current) setLoading(false)
   }, [supabase])
-
-  // Seed default data if user has none
-  const seedDefaultData = useCallback(async () => {
-    if (!userId || servidores.length > 0) return
-
-    const response = await fetch(`/api/migrate?userId=${userId}`)
-    const result = await response.json()
-
-    if (result.seeded) {
-      fetchAllData()
-    }
-  }, [userId, servidores.length, fetchAllData])
 
   useEffect(() => {
     isMounted.current = true
@@ -152,14 +166,10 @@ export function useSupabaseData() {
     }
   }, [fetchAllData])
 
-  useEffect(() => {
-    if (!loading && userId && servidores.length === 0) {
-      seedDefaultData()
-    }
-  }, [loading, userId, servidores.length, seedDefaultData])
-
   // ─── Transaction operations ────────────────────────────────────────────────
-  const addTransaction = async (transaction: Omit<Transaction, 'id' | 'createdAt'>): Promise<Transaction | null> => {
+  const addTransaction = async (
+    transaction: Omit<Transaction, 'id' | 'createdAt'>
+  ): Promise<Transaction | null> => {
     if (!userId) return null
 
     const { data, error } = await supabase
@@ -203,13 +213,14 @@ export function useSupabaseData() {
         profit_snapshot: transaction.profitSnapshot ?? null,
       })
       .eq('id', transaction.id)
+      .eq('user_id', userId)
       .select()
       .single()
 
     if (error || !data) return null
 
     const updatedTx = mapTransactionFromDB(data)
-    setTransactions(prev => prev.map(t => t.id === transaction.id ? updatedTx : t))
+    setTransactions(prev => prev.map(t => (t.id === transaction.id ? updatedTx : t)))
     return updatedTx
   }
 
@@ -220,6 +231,7 @@ export function useSupabaseData() {
       .from('transactions')
       .delete()
       .eq('id', id)
+      .eq('user_id', userId)
 
     if (error) return false
 
@@ -270,13 +282,14 @@ export function useSupabaseData() {
         recharge_quantity: servidor.rechargeQuantity ?? 10,
       })
       .eq('id', servidor.id)
+      .eq('user_id', userId)
       .select()
       .single()
 
     if (error || !data) return null
 
     const updatedServidor = mapServidorFromDB(data)
-    setServidores(prev => prev.map(s => s.id === servidor.id ? updatedServidor : s))
+    setServidores(prev => prev.map(s => (s.id === servidor.id ? updatedServidor : s)))
     return updatedServidor
   }
 
@@ -287,6 +300,7 @@ export function useSupabaseData() {
       .from('servidores')
       .delete()
       .eq('id', id)
+      .eq('user_id', userId)
 
     if (error) return false
 
@@ -295,6 +309,8 @@ export function useSupabaseData() {
   }
 
   const adjustCreditsBalance = async (serverId: string, delta: number): Promise<boolean> => {
+    if (!userId) return false
+
     const servidor = servidores.find(s => s.id === serverId)
     if (!servidor) return false
 
@@ -304,12 +320,13 @@ export function useSupabaseData() {
       .from('servidores')
       .update({ credits_balance: newBalance })
       .eq('id', serverId)
+      .eq('user_id', userId)
 
     if (error) return false
 
-    setServidores(prev => prev.map(s =>
-      s.id === serverId ? { ...s, creditsBalance: newBalance } : s
-    ))
+    setServidores(prev =>
+      prev.map(s => (s.id === serverId ? { ...s, creditsBalance: newBalance } : s))
+    )
     return true
   }
 
@@ -356,13 +373,14 @@ export function useSupabaseData() {
         custo: plano.custo,
       })
       .eq('id', plano.id)
+      .eq('user_id', userId)
       .select()
       .single()
 
     if (error || !data) return null
 
     const updatedPlano = mapPlanoFromDB(data)
-    setPlanos(prev => prev.map(p => p.id === plano.id ? updatedPlano : p))
+    setPlanos(prev => prev.map(p => (p.id === plano.id ? updatedPlano : p)))
     return updatedPlano
   }
 
@@ -373,6 +391,7 @@ export function useSupabaseData() {
       .from('planos')
       .delete()
       .eq('id', id)
+      .eq('user_id', userId)
 
     if (error) return false
 
@@ -381,7 +400,9 @@ export function useSupabaseData() {
   }
 
   // ─── Saida Rapida operations ───────────────────────────────────────────────
-  const addSaidaRapida = async (saida: Omit<SaidaRapida, 'id'>): Promise<SaidaRapida | null> => {
+  const addSaidaRapida = async (
+    saida: Omit<SaidaRapida, 'id'>
+  ): Promise<SaidaRapida | null> => {
     if (!userId) return null
 
     const { data, error } = await supabase
@@ -419,13 +440,14 @@ export function useSupabaseData() {
         descricao_padrao: saida.descricaoPadrao,
       })
       .eq('id', saida.id)
+      .eq('user_id', userId)
       .select()
       .single()
 
     if (error || !data) return null
 
     const updatedSaida = mapSaidaRapidaFromDB(data)
-    setSaidasRapidas(prev => prev.map(s => s.id === saida.id ? updatedSaida : s))
+    setSaidasRapidas(prev => prev.map(s => (s.id === saida.id ? updatedSaida : s)))
     return updatedSaida
   }
 
@@ -436,6 +458,7 @@ export function useSupabaseData() {
       .from('saidas_rapidas')
       .delete()
       .eq('id', id)
+      .eq('user_id', userId)
 
     if (error) return false
 
@@ -444,7 +467,9 @@ export function useSupabaseData() {
   }
 
   // ─── Credit Movement operations ────────────────────────────────────────────
-  const addCreditMovement = async (movement: Omit<CreditMovement, 'id'>): Promise<CreditMovement | null> => {
+  const addCreditMovement = async (
+    movement: Omit<CreditMovement, 'id'>
+  ): Promise<CreditMovement | null> => {
     if (!userId) return null
 
     const { data, error } = await supabase
@@ -474,6 +499,7 @@ export function useSupabaseData() {
       .from('credit_movements')
       .delete()
       .eq('transaction_id', transactionId)
+      .eq('user_id', userId)
 
     if (error) return false
 
@@ -482,7 +508,9 @@ export function useSupabaseData() {
   }
 
   // ─── Activation Product operations ─────────────────────────────────────────
-  const addActivationProduct = async (product: Omit<ActivationProduct, 'id'>): Promise<ActivationProduct | null> => {
+  const addActivationProduct = async (
+    product: Omit<ActivationProduct, 'id'>
+  ): Promise<ActivationProduct | null> => {
     if (!userId) return null
 
     const { data, error } = await supabase
@@ -505,7 +533,9 @@ export function useSupabaseData() {
     return newProduct
   }
 
-  const updateActivationProduct = async (product: ActivationProduct): Promise<ActivationProduct | null> => {
+  const updateActivationProduct = async (
+    product: ActivationProduct
+  ): Promise<ActivationProduct | null> => {
     if (!userId) return null
 
     const { data, error } = await supabase
@@ -518,13 +548,14 @@ export function useSupabaseData() {
         linked_server_id: product.linkedServerId || null,
       })
       .eq('id', product.id)
+      .eq('user_id', userId)
       .select()
       .single()
 
     if (error || !data) return null
 
     const updatedProduct = mapActivationProductFromDB(data)
-    setActivationProducts(prev => prev.map(p => p.id === product.id ? updatedProduct : p))
+    setActivationProducts(prev => prev.map(p => (p.id === product.id ? updatedProduct : p)))
     return updatedProduct
   }
 
@@ -535,6 +566,7 @@ export function useSupabaseData() {
       .from('activation_products')
       .delete()
       .eq('id', id)
+      .eq('user_id', userId)
 
     if (error) return false
 
@@ -570,13 +602,16 @@ export function useSupabaseData() {
     return newAtx
   }
 
-  const removeActivationTransactionByTransactionId = async (transactionId: string): Promise<boolean> => {
+  const removeActivationTransactionByTransactionId = async (
+    transactionId: string
+  ): Promise<boolean> => {
     if (!userId) return false
 
     const { error } = await supabase
       .from('activation_transactions')
       .delete()
       .eq('transaction_id', transactionId)
+      .eq('user_id', userId)
 
     if (error) return false
 
@@ -584,14 +619,16 @@ export function useSupabaseData() {
     return true
   }
 
-  const getActivationTransactionByTransactionId = (transactionId: string): ActivationTransaction | undefined => {
+  const getActivationTransactionByTransactionId = (
+    transactionId: string
+  ): ActivationTransaction | undefined => {
     return activationTransactions.find(a => a.transactionId === transactionId)
   }
 
   // ── Revenda Grupo operations ───────────────────────────────────────────────
-
   const addRevendaGrupo = async (grupo: Omit<RevendaGrupo, 'id'>): Promise<RevendaGrupo | null> => {
     if (!userId) return null
+
     const { data, error } = await supabase
       .from('revenda_grupos')
       .insert({
@@ -602,19 +639,27 @@ export function useSupabaseData() {
       })
       .select()
       .single()
+
     if (error || !data) return null
+
     const newGrupo: RevendaGrupo = {
       id: data.id,
       nome: data.nome,
       servidorIds: data.servidor_ids || [],
-      faixas: (data.faixas || []).map((f: Record<string, number>) => ({ min: f.min, max: f.max, preco: f.preco })),
+      faixas: (data.faixas || []).map((f: Record<string, number>) => ({
+        min: f.min,
+        max: f.max,
+        preco: f.preco,
+      })),
     }
+
     setRevendaGrupos(prev => [...prev, newGrupo])
     return newGrupo
   }
 
   const updateRevendaGrupo = async (grupo: RevendaGrupo): Promise<boolean> => {
     if (!userId) return false
+
     const { error } = await supabase
       .from('revenda_grupos')
       .update({
@@ -623,18 +668,25 @@ export function useSupabaseData() {
         faixas: grupo.faixas,
       })
       .eq('id', grupo.id)
+      .eq('user_id', userId)
+
     if (error) return false
-    setRevendaGrupos(prev => prev.map(g => g.id === grupo.id ? grupo : g))
+
+    setRevendaGrupos(prev => prev.map(g => (g.id === grupo.id ? grupo : g)))
     return true
   }
 
   const deleteRevendaGrupo = async (id: string): Promise<boolean> => {
     if (!userId) return false
+
     const { error } = await supabase
       .from('revenda_grupos')
       .delete()
       .eq('id', id)
+      .eq('user_id', userId)
+
     if (error) return false
+
     setRevendaGrupos(prev => prev.filter(g => g.id !== id))
     return true
   }

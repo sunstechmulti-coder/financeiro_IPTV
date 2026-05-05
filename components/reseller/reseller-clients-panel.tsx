@@ -10,6 +10,7 @@ import {
   EyeOff,
   Loader2,
   Mail,
+  MessageCircle,
   Plus,
   RefreshCw,
   Store,
@@ -79,6 +80,12 @@ interface RenewalPlan {
   credits: number
 }
 
+interface AdminContact {
+  id: string | null
+  email: string | null
+  whatsappNumber: string | null
+}
+
 const STATUS_LABELS: Record<ResellerStatus, string> = {
   active: 'Ativo',
   grace: 'Tolerância',
@@ -101,6 +108,18 @@ function formatDate(dateStr: string | null | undefined) {
   if (Number.isNaN(date.getTime())) return '—'
 
   return date.toLocaleDateString('pt-BR')
+}
+
+function normalizeWhatsappNumber(value: string | null | undefined) {
+  const digits = String(value || '').replace(/\D/g, '')
+
+  if (!digits) return ''
+
+  if (digits.length === 10 || digits.length === 11) {
+    return `55${digits}`
+  }
+
+  return digits
 }
 
 function getSubscriptionBadge(subscription: ClientSubscription | null) {
@@ -179,6 +198,8 @@ function getWalletStatusBadge(wallet: ResellerWallet | null) {
 export function ResellerClientsPanel() {
   const [clients, setClients] = useState<ResellerClient[]>([])
   const [wallet, setWallet] = useState<ResellerWallet | null>(null)
+  const [adminContact, setAdminContact] = useState<AdminContact | null>(null)
+  const [resellerEmail, setResellerEmail] = useState('')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState('')
@@ -218,6 +239,8 @@ export function ResellerClientsPanel() {
 
       setClients(json.clients || [])
       setWallet(json.wallet || null)
+      setAdminContact(json.adminContact || null)
+      setResellerEmail(json.reseller?.email || '')
     } catch {
       setError('Erro ao conectar ao servidor.')
     } finally {
@@ -255,14 +278,39 @@ export function ResellerClientsPanel() {
     }
   }, [clients])
 
-  const canCreateClient = wallet?.status !== 'grace' && wallet?.status !== 'blocked'
+  const walletBalance = Number(wallet?.balance ?? 0)
+  const walletStatusLabel = wallet ? STATUS_LABELS[wallet.status] : 'Sem carteira'
+
+  const rechargeWhatsappUrl = useMemo(() => {
+    const phone = normalizeWhatsappNumber(adminContact?.whatsappNumber)
+
+    if (!phone) return ''
+
+    const message = [
+      'Olá, preciso solicitar recarga de créditos para minha conta de revendedor.',
+      '',
+      `E-mail: ${resellerEmail || 'não informado'}`,
+      `Saldo atual: ${walletBalance} crédito(s)`,
+      `Status: ${walletStatusLabel}`,
+    ].join('\n')
+
+    return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
+  }, [adminContact?.whatsappNumber, resellerEmail, walletBalance, walletStatusLabel])
+
+  const canCreateClient = wallet?.status === 'active' && walletBalance > 0
   const canRenewClient = wallet?.status === 'active'
 
   const selectedPlan = useMemo(() => {
     return RENEWAL_PLANS.find((plan) => plan.id === selectedPlanId) || RENEWAL_PLANS[0]
   }, [selectedPlanId])
 
-  const hasEnoughCredits = (wallet?.balance ?? 0) >= selectedPlan.credits
+  const hasEnoughCredits = walletBalance >= selectedPlan.credits
+
+  const handleRequestRecharge = () => {
+    if (!rechargeWhatsappUrl) return
+
+    window.open(rechargeWhatsappUrl, '_blank', 'noopener,noreferrer')
+  }
 
   const handleCreateClient = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -378,6 +426,21 @@ export function ResellerClientsPanel() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant={walletBalance <= 0 ? 'default' : 'outline'}
+            size="sm"
+            onClick={handleRequestRecharge}
+            disabled={!rechargeWhatsappUrl}
+            title={
+              !rechargeWhatsappUrl
+                ? 'WhatsApp do administrador não configurado.'
+                : 'Solicitar recarga de créditos pelo WhatsApp.'
+            }
+          >
+            <MessageCircle className="mr-2 h-4 w-4" />
+            Solicitar Recarga
+          </Button>
+
           <Button
             variant="outline"
             size="sm"
@@ -501,10 +564,46 @@ export function ResellerClientsPanel() {
         </div>
       )}
 
-      {!canCreateClient && (
-        <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-500">
-          Sua revenda está em modo {wallet?.status === 'grace' ? 'tolerância' : 'bloqueado'}.
-          Você pode acompanhar seus clientes, mas não pode criar novos ou renovar até regularizar sua recarga.
+      {!adminContact?.whatsappNumber && (
+        <div className="flex items-center gap-2 rounded-lg border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-sm text-orange-400">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          WhatsApp do administrador não configurado. Cadastre o número no painel admin para liberar a solicitação de recarga.
+        </div>
+      )}
+
+      {wallet?.status === 'active' && walletBalance <= 0 && (
+        <div className="flex flex-col gap-3 rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-300 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            Você está sem créditos. Solicite uma recarga para criar novos clientes ou renovar acessos.
+          </div>
+          <Button
+            size="sm"
+            onClick={handleRequestRecharge}
+            disabled={!rechargeWhatsappUrl}
+            className="w-full sm:w-auto"
+          >
+            <MessageCircle className="mr-2 h-4 w-4" />
+            Solicitar Recarga
+          </Button>
+        </div>
+      )}
+
+      {wallet && wallet.status !== 'active' && (
+        <div className="flex flex-col gap-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-500 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            Sua revenda está em modo {wallet.status === 'grace' ? 'tolerância' : 'bloqueado'}.
+            Você pode acompanhar seus clientes, mas não pode criar novos ou renovar até regularizar sua recarga.
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleRequestRecharge}
+            disabled={!rechargeWhatsappUrl}
+            className="w-full sm:w-auto"
+          >
+            <MessageCircle className="mr-2 h-4 w-4" />
+            Solicitar Recarga
+          </Button>
         </div>
       )}
 
@@ -516,7 +615,7 @@ export function ResellerClientsPanel() {
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Créditos</p>
-              <p className="text-lg font-semibold">{wallet?.balance ?? 0}</p>
+              <p className="text-lg font-semibold">{walletBalance}</p>
             </div>
           </CardContent>
         </Card>
@@ -669,7 +768,7 @@ export function ResellerClientsPanel() {
             <div className="grid grid-cols-2 gap-2 rounded-lg border bg-background p-3 text-sm">
               <div>
                 <p className="text-xs text-muted-foreground">Saldo atual</p>
-                <p className="font-semibold">{wallet?.balance ?? 0} crédito(s)</p>
+                <p className="font-semibold">{walletBalance} crédito(s)</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Status</p>
@@ -700,7 +799,7 @@ export function ResellerClientsPanel() {
             {!hasEnoughCredits && (
               <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 <AlertCircle className="h-4 w-4 shrink-0" />
-                Saldo insuficiente para este plano.
+                Saldo insuficiente para este plano. Solicite uma recarga para continuar.
               </div>
             )}
 

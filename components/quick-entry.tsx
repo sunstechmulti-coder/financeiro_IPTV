@@ -28,9 +28,13 @@ interface EntryLog {
   timestamp: string
 }
 
+function getTodayISODate() {
+  return format(new Date(), 'yyyy-MM-dd')
+}
+
 export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: QuickEntryProps) {
   const [expanded, setExpanded] = useState(false)
-  const [selectedDate, setSelectedDate] = useState(() => format(new Date(), 'yyyy-MM-dd'))
+  const [selectedDate, setSelectedDate] = useState(() => getTodayISODate())
   const [codigoInput, setCodigoInput] = useState('')
   const [valorOverride, setValorOverride] = useState('')
   const [matchedPlano, setMatchedPlano] = useState<PlanoEntrada | null>(null)
@@ -41,6 +45,28 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
   const [feedbackMsg, setFeedbackMsg] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
   const suggestionsRef = useRef<HTMLDivElement>(null)
+
+  const focusCodeInput = useCallback((delay = 0) => {
+    if (typeof window === 'undefined') return
+
+    const run = () => {
+      inputRef.current?.focus()
+      inputRef.current?.select()
+    }
+
+    if (delay > 0) {
+      window.setTimeout(run, delay)
+      return
+    }
+
+    window.requestAnimationFrame(run)
+  }, [])
+
+  const refocusForNextEntry = useCallback(() => {
+    focusCodeInput(0)
+    focusCodeInput(50)
+    focusCodeInput(250)
+  }, [focusCodeInput])
 
   const getServidor = useCallback((id: string) => servidores.find(s => s.id === id), [servidores])
 
@@ -62,9 +88,16 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
     return Number.isFinite(numericValue) ? numericValue : 0
   }, [servidores])
 
+  useEffect(() => {
+    if (expanded) {
+      refocusForNextEntry()
+    }
+  }, [expanded, refocusForNextEntry])
+
   // Search planos by code as user types
   useEffect(() => {
     const q = codigoInput.trim().toUpperCase()
+
     if (q.length === 0) {
       setSuggestions([])
       setMatchedPlano(null)
@@ -76,11 +109,13 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
       p.codigo.toUpperCase().startsWith(q) ||
       p.descricao.toUpperCase().includes(q)
     )
+
     setSuggestions(matches)
     setShowSuggestions(matches.length > 0 && !matchedPlano)
 
     // Exact match
     const exact = planos.find(p => p.codigo.toUpperCase() === q)
+
     if (exact) {
       setMatchedPlano(exact)
       setValorOverride(exact.valorVenda.toFixed(2).replace('.', ','))
@@ -98,7 +133,9 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
         setShowSuggestions(false)
       }
     }
+
     document.addEventListener('mousedown', handler)
+
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
@@ -107,7 +144,7 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
     setCodigoInput(plano.codigo)
     setValorOverride(plano.valorVenda.toFixed(2).replace('.', ','))
     setShowSuggestions(false)
-    inputRef.current?.focus()
+    refocusForNextEntry()
   }
 
   const valorFinal = valorOverride
@@ -121,10 +158,31 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
   const unitCost = matchedPlano ? getServidorUnitCost(matchedPlano.servidorId) : 0
   const custoTotal = Number((unitCost * creditosUsados).toFixed(2))
   const lucro = valorFinal - custoTotal
-  const canSave = matchedPlano && valorFinal > 0 && saldoRestante >= 0
+  const canSave = Boolean(matchedPlano && selectedDate && valorFinal > 0 && saldoRestante >= 0)
+
+  const resetEntryFields = () => {
+    setCodigoInput('')
+    setMatchedPlano(null)
+    setValorOverride('')
+    setSuggestions([])
+    setShowSuggestions(false)
+  }
 
   const handleConfirm = async () => {
-    if (!matchedPlano || !canSave) return
+    if (!matchedPlano || !canSave || saving) {
+      refocusForNextEntry()
+      return
+    }
+
+    const planoToSave = matchedPlano
+    const servidorToLog = servidor
+    const valorToSave = valorFinal
+    const creditosToSave = creditosUsados
+    const unitCostToSave = unitCost
+    const custoToSave = custoTotal
+    const lucroToSave = lucro
+    const dateToSave = selectedDate || getTodayISODate()
+
     setSaving(true)
     setFeedbackMsg('')
 
@@ -133,81 +191,93 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
 
       const tx: Transaction = {
         id: generateId(),
-        date: selectedDate,
+        date: dateToSave,
         type: 'income',
-        description: matchedPlano.descricao,
-        amount: valorFinal,
+        description: planoToSave.descricao,
+        amount: valorToSave,
         createdAt: now,
-        serverId: matchedPlano.servidorId,
-        creditsDelta: -creditosUsados,
+        serverId: planoToSave.servidorId,
+        creditsDelta: -creditosToSave,
 
         // SNAPSHOT FINANCEIRO
-        unitCostSnapshot: unitCost,
-        costSnapshot: custoTotal,
-        profitSnapshot: lucro,
+        unitCostSnapshot: unitCostToSave,
+        costSnapshot: custoToSave,
+        profitSnapshot: lucroToSave,
       }
 
       if (onAdjustCredits) {
-        await onAdjustCredits(matchedPlano.servidorId, -creditosUsados)
+        const adjusted = await onAdjustCredits(planoToSave.servidorId, -creditosToSave)
+
+        if (adjusted === false) {
+          throw new Error('Não foi possível ajustar os créditos do servidor.')
+        }
       }
 
       await onSave(tx)
 
-      // Log
       setRecentLogs(prev => [{
         id: tx.id,
-        codigo: matchedPlano.codigo,
-        descricao: matchedPlano.descricao,
-        servidor: servidor?.nome ?? '',
-        valor: valorFinal,
-        creditos: creditosUsados,
+        codigo: planoToSave.codigo,
+        descricao: planoToSave.descricao,
+        servidor: servidorToLog?.nome ?? '',
+        valor: valorToSave,
+        creditos: creditosToSave,
         timestamp: format(new Date(), 'HH:mm:ss'),
       }, ...prev].slice(0, 10))
 
-      setFeedbackMsg(`${matchedPlano.codigo} — ${formatCurrency(valorFinal)}`)
+      setFeedbackMsg(`${planoToSave.codigo} — ${formatCurrency(valorToSave)}`)
 
       // Reset for next entry
-      setCodigoInput('')
-      setMatchedPlano(null)
-      setValorOverride('')
-      setSuggestions([])
+      resetEntryFields()
+      refocusForNextEntry()
 
-      setTimeout(() => {
-        inputRef.current?.focus()
+      window.setTimeout(() => {
         setFeedbackMsg('')
-      }, 1500)
+        refocusForNextEntry()
+      }, 900)
     } catch {
       setFeedbackMsg('Erro ao salvar')
+      refocusForNextEntry()
     } finally {
       setSaving(false)
+      refocusForNextEntry()
     }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && canSave) {
+    if (e.key === 'Enter') {
       e.preventDefault()
-      handleConfirm()
+      e.stopPropagation()
+
+      if (canSave && !saving) {
+        void handleConfirm()
+      }
+
+      return
     }
+
     if (e.key === 'Escape') {
-      setCodigoInput('')
-      setMatchedPlano(null)
-      setValorOverride('')
-      setShowSuggestions(false)
+      e.preventDefault()
+      e.stopPropagation()
+
+      resetEntryFields()
+      refocusForNextEntry()
     }
   }
 
   const handleClear = () => {
-    setCodigoInput('')
-    setMatchedPlano(null)
-    setValorOverride('')
-    setShowSuggestions(false)
-    inputRef.current?.focus()
+    resetEntryFields()
+    refocusForNextEntry()
   }
 
   if (!expanded) {
     return (
       <button
-        onClick={() => { setExpanded(true); setTimeout(() => inputRef.current?.focus(), 100) }}
+        type="button"
+        onClick={() => {
+          setExpanded(true)
+          refocusForNextEntry()
+        }}
         className="w-full flex items-center justify-between rounded-lg border border-dashed border-primary/30 bg-primary/5 px-3 sm:px-4 py-2.5 sm:py-3 text-sm transition-colors hover:bg-primary/10 hover:border-primary/50"
         data-testid="quick-entry-toggle"
       >
@@ -215,7 +285,9 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
           <Zap className="h-4 w-4" />
           Lançamento Express
         </span>
-        <span className="text-xs text-muted-foreground hidden sm:inline">Digite o código do plano e confirme com Enter</span>
+        <span className="text-xs text-muted-foreground hidden sm:inline">
+          Digite o código do plano e confirme com Enter
+        </span>
         <ChevronDown className="h-4 w-4 text-muted-foreground" />
       </button>
     )
@@ -229,6 +301,7 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
           <Zap className="h-4 w-4" />
           Lançamento Express
         </span>
+
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5">
             <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
@@ -240,9 +313,12 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
               data-testid="quick-entry-date"
             />
           </div>
+
           <button
+            type="button"
             onClick={() => setExpanded(false)}
             className="text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="Recolher lançamento express"
           >
             <ChevronUp className="h-4 w-4" />
           </button>
@@ -255,12 +331,17 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
         <div className="flex items-end gap-2 sm:gap-3">
           <div className="relative flex-1 sm:flex-none sm:w-[200px]">
             <label className="text-xs text-muted-foreground mb-1 block">Código</label>
+
             <Input
               ref={inputRef}
               value={codigoInput}
               onChange={(e) => setCodigoInput(e.target.value.toUpperCase())}
               onKeyDown={handleKeyDown}
-              onFocus={() => { if (suggestions.length > 0 && !matchedPlano) setShowSuggestions(true) }}
+              onFocus={() => {
+                if (suggestions.length > 0 && !matchedPlano) {
+                  setShowSuggestions(true)
+                }
+              }}
               placeholder="Ex: RMC"
               className={cn(
                 'font-mono uppercase',
@@ -270,10 +351,13 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
               disabled={saving}
               data-testid="quick-entry-code"
             />
+
             {codigoInput && (
               <button
+                type="button"
                 onClick={handleClear}
                 className="absolute right-2 top-[calc(50%+8px)] -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                aria-label="Limpar código"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -287,18 +371,27 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
               >
                 {suggestions.map(p => {
                   const srv = getServidor(p.servidorId)
+
                   return (
                     <button
                       key={p.id}
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
                       onClick={() => selectPlano(p)}
                       className="w-full flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 text-left text-sm hover:bg-muted/50 transition-colors"
                     >
                       <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded font-medium shrink-0">
                         {p.codigo}
                       </span>
-                      <span className="truncate text-muted-foreground text-xs sm:text-sm">{p.descricao}</span>
-                      <span className="ml-auto text-xs text-muted-foreground shrink-0">{srv?.nome}</span>
-                      <span className="text-xs font-medium shrink-0">{formatCurrency(p.valorVenda)}</span>
+                      <span className="truncate text-muted-foreground text-xs sm:text-sm">
+                        {p.descricao}
+                      </span>
+                      <span className="ml-auto text-xs text-muted-foreground shrink-0">
+                        {srv?.nome}
+                      </span>
+                      <span className="text-xs font-medium shrink-0">
+                        {formatCurrency(p.valorVenda)}
+                      </span>
                     </button>
                   )
                 })}
@@ -311,8 +404,9 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
             <div className="sm:hidden shrink-0">
               <label className="text-xs text-muted-foreground mb-1 block opacity-0">.</label>
               <Button
+                type="button"
                 size="sm"
-                onClick={handleConfirm}
+                onClick={() => void handleConfirm()}
                 disabled={!canSave || saving}
                 className="h-9 px-3"
                 data-testid="quick-entry-confirm-mobile"
@@ -351,7 +445,9 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
               <div className="shrink-0 w-[120px]">
                 <label className="text-xs text-muted-foreground mb-1 block">Valor (R$)</label>
                 <div className="relative">
-                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">R$</span>
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">
+                    R$
+                  </span>
                   <Input
                     className="pl-8 font-mono text-sm"
                     value={valorOverride}
@@ -374,29 +470,42 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
               </div>
 
               <Button
+                type="button"
                 size="sm"
-                onClick={handleConfirm}
+                onClick={() => void handleConfirm()}
                 disabled={!canSave || saving}
                 className="h-9 px-4 shrink-0"
                 data-testid="quick-entry-confirm"
               >
-                {saving ? '...' : <><Check className="h-4 w-4 mr-1" /> Lançar</>}
+                {saving ? '...' : (
+                  <>
+                    <Check className="h-4 w-4 mr-1" />
+                    Lançar
+                  </>
+                )}
               </Button>
             </div>
 
             {/* Mobile: stacked grid */}
             <div className="sm:hidden space-y-2">
               <div className="text-xs text-muted-foreground truncate">
-                {matchedPlano.descricao} — <span className="font-medium text-foreground">{servidor.nome}</span>
-                <span className={cn('ml-1 tabular-nums', saldoAtual > 0 ? 'text-emerald-400' : 'text-red-400')}>
+                {matchedPlano.descricao} —{' '}
+                <span className="font-medium text-foreground">{servidor.nome}</span>
+                <span className={cn(
+                  'ml-1 tabular-nums',
+                  saldoAtual > 0 ? 'text-emerald-400' : 'text-red-400'
+                )}>
                   ({saldoAtual}cr)
                 </span>
               </div>
+
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Valor (R$)</label>
                   <div className="relative">
-                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">R$</span>
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">
+                      R$
+                    </span>
                     <Input
                       className="pl-8 font-mono text-sm"
                       value={valorOverride}
@@ -407,6 +516,7 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
                     />
                   </div>
                 </div>
+
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Lucro</label>
                   <div className={cn(
@@ -422,25 +532,26 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
         )}
 
         {/* Warnings and feedback below the input area */}
-        {/* Insufficient credits warning */}
         {matchedPlano && saldoRestante < 0 && (
           <div className="text-xs text-red-400">
             Créditos insuficientes — necessário: {creditosUsados}, disponível: {saldoAtual}
           </div>
         )}
 
-        {/* Value override notice */}
         {matchedPlano && valorFinal !== matchedPlano.valorVenda && valorFinal > 0 && (
           <div className="text-xs text-amber-500">
-            Valor original: {formatCurrency(matchedPlano.valorVenda)} — lançando por {formatCurrency(valorFinal)}
+            Valor original: {formatCurrency(matchedPlano.valorVenda)} — lançando por{' '}
+            {formatCurrency(valorFinal)}
           </div>
         )}
 
-        {/* Success feedback */}
         {feedbackMsg && (
-          <div className="flex items-center gap-2 text-xs text-emerald-400 animate-pulse">
+          <div className={cn(
+            'flex items-center gap-2 text-xs animate-pulse',
+            feedbackMsg === 'Erro ao salvar' ? 'text-red-400' : 'text-emerald-400'
+          )}>
             <Check className="h-3.5 w-3.5" />
-            Lançado: {feedbackMsg}
+            {feedbackMsg === 'Erro ao salvar' ? feedbackMsg : <>Lançado: {feedbackMsg}</>}
           </div>
         )}
 
@@ -448,13 +559,16 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
         {recentLogs.length > 0 && (
           <div className="border-t border-border/50 pt-2 mt-2">
             <span className="text-xs text-muted-foreground">Últimos lançamentos:</span>
+
             <div className="mt-1 space-y-0.5">
               {recentLogs.map(log => (
                 <div key={log.id} className="flex items-center gap-3 text-xs text-muted-foreground">
                   <span className="tabular-nums w-14 shrink-0">{log.timestamp}</span>
                   <span className="font-mono bg-muted/50 px-1 py-0.5 rounded">{log.codigo}</span>
                   <span className="truncate">{log.descricao}</span>
-                  <span className="ml-auto shrink-0 text-emerald-400 font-medium tabular-nums">{formatCurrency(log.valor)}</span>
+                  <span className="ml-auto shrink-0 text-emerald-400 font-medium tabular-nums">
+                    {formatCurrency(log.valor)}
+                  </span>
                   <span className="shrink-0 text-muted-foreground/60">-{log.creditos}cr</span>
                 </div>
               ))}

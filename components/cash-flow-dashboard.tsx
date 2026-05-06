@@ -433,6 +433,10 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
     await refreshData()
   }
 
+  const handleQuickEntrySaveTransaction = async (transaction: Transaction) => {
+    await addTransaction(transaction)
+  }
+
   const handleDeleteTransaction = async (id: string) => {
     const tx = transactions.find((t) => t.id === id)
 
@@ -521,6 +525,7 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
             {tabs.map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
+                type="button"
                 onClick={() => setActiveTab(id)}
                 className={cn(
                   'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm transition-colors xl:px-3',
@@ -555,6 +560,7 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
           {tabs.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
+              type="button"
               onClick={() => setActiveTab(id)}
               className={cn(
                 'flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm transition-colors',
@@ -600,7 +606,7 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
               <QuickEntry
                 planos={planos}
                 servidores={servidores}
-                onSave={handleSaveTransaction}
+                onSave={handleQuickEntrySaveTransaction}
                 onAdjustCredits={adjustCreditsBalance}
               />
 

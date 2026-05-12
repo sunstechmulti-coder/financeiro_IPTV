@@ -1,7 +1,17 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, FileText } from 'lucide-react'
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { Button } from '@/components/ui/button'
@@ -13,7 +23,7 @@ import { ServerProfit } from '@/components/analytics/server-profit'
 import { RevenueDistribution } from '@/components/analytics/revenue-distribution'
 import { MonthlyComparison } from '@/components/analytics/monthly-comparison'
 import { InsightsPanel } from '@/components/analytics/insights-panel'
-import { formatCurrency, formatDate } from '@/lib/format'
+import { formatCurrency } from '@/lib/format'
 import type { Transaction, Servidor, CreditMovement, PlanoEntrada } from '@/lib/types'
 
 interface AnalyticsPageProps {
@@ -23,10 +33,548 @@ interface AnalyticsPageProps {
   planos: PlanoEntrada[]
 }
 
+interface CreditFlowSummaryProps {
+  transactions: Transaction[]
+  servidores: Servidor[]
+  movements: CreditMovement[]
+  month: number
+  year: number
+}
+
+type CreditDirection = 'in' | 'out' | 'unknown'
+
+interface CreditServerRow {
+  id: string
+  nome: string
+  entradas: number
+  saidas: number
+  liquido: number
+  saldoAtual: number
+}
+
+interface CreditDailyRow {
+  day: string
+  entradas: number
+  saidas: number
+  liquido: number
+}
+
+interface CreditFlowAnalytics {
+  totalEntradas: number
+  totalSaidas: number
+  saldoLiquido: number
+  saldoAtualTotal: number
+  dailyRows: CreditDailyRow[]
+  activeDailyRows: CreditDailyRow[]
+  serverRows: CreditServerRow[]
+  activeServerRows: CreditServerRow[]
+  hasMonthlyMovements: boolean
+}
+
 const MONTH_NAMES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
 ]
+
+const CREDIT_WARNING_LIMIT = 10
+
+function normalizeText(value: unknown) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+}
+
+function toNumber(value: unknown) {
+  if (value === null || value === undefined || value === '') return 0
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0
+  }
+
+  const normalized = String(value)
+    .replace(/\./g, '')
+    .replace(',', '.')
+
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function formatCredits(value: number) {
+  return value.toLocaleString('pt-BR', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })
+}
+
+function getRecordDate(record: any) {
+  return (
+    record?.date ??
+    record?.created_at ??
+    record?.createdAt ??
+    record?.movement_date ??
+    record?.movementDate ??
+    record?.purchase_date ??
+    record?.purchaseDate ??
+    record?.consumed_at ??
+    record?.consumedAt ??
+    record?.updated_at ??
+    record?.updatedAt ??
+    null
+  )
+}
+
+function parseLocalDate(value: unknown) {
+  if (!value) return null
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value
+  }
+
+  const text = String(value)
+  const date = text.includes('T') ? new Date(text) : new Date(`${text}T00:00:00`)
+
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function isRecordInMonth(record: any, month: number, year: number) {
+  const date = parseLocalDate(getRecordDate(record))
+  if (!date) return false
+
+  return date.getMonth() === month && date.getFullYear() === year
+}
+
+function getRecordDay(record: any) {
+  const date = parseLocalDate(getRecordDate(record))
+  return date ? date.getDate() : null
+}
+
+function getServidorId(servidor: any) {
+  const value = servidor?.id ?? servidor?.server_id ?? servidor?.serverId
+  return value ? String(value) : ''
+}
+
+function getMovementServerId(record: any) {
+  const value =
+    record?.server_id ??
+    record?.serverId ??
+    record?.servidor_id ??
+    record?.servidorId ??
+    record?.server?.id ??
+    record?.servidor?.id
+
+  return value ? String(value) : ''
+}
+
+function getServerName(servidor: any) {
+  return String(
+    servidor?.nome ??
+    servidor?.name ??
+    servidor?.server_name ??
+    servidor?.serverName ??
+    'Servidor'
+  )
+}
+
+function getServerCredits(servidor: any) {
+  return toNumber(
+    servidor?.creditsBalance ??
+      servidor?.credit_balance ??
+      servidor?.saldo_creditos ??
+      servidor?.saldoCreditos ??
+      servidor?.credits ??
+      servidor?.saldo ??
+      0
+  )
+}
+
+function getMovementQuantity(movement: any) {
+  return toNumber(
+    movement?.quantity ??
+      movement?.qty ??
+      movement?.credits_qty ??
+      movement?.credit_qty ??
+      movement?.creditsQty ??
+      movement?.creditQuantity ??
+      movement?.creditsQuantity ??
+      movement?.credits_amount ??
+      movement?.credit_amount ??
+      movement?.creditsAmount ??
+      movement?.creditAmount ??
+      movement?.credits ??
+      0
+  )
+}
+
+function detectCreditDirection(record: any): CreditDirection {
+  const raw = normalizeText([
+    record?.type,
+    record?.movement_type,
+    record?.movementType,
+    record?.kind,
+    record?.direction,
+    record?.operation,
+    record?.source,
+    record?.table,
+    record?.reason,
+    record?.description,
+    record?.descricao,
+    record?.notes,
+  ].filter(Boolean).join(' '))
+
+  if (
+    raw.includes('consum') ||
+    raw.includes('saida') ||
+    raw.includes('venda') ||
+    raw.includes('sale') ||
+    raw.includes('sold') ||
+    raw.includes('debit') ||
+    raw.includes('subtract') ||
+    raw.includes('usage') ||
+    raw.includes('used') ||
+    raw === 'out'
+  ) {
+    return 'out'
+  }
+
+  if (
+    raw.includes('compra') ||
+    raw.includes('purchase') ||
+    raw.includes('entrada') ||
+    raw.includes('recarga') ||
+    raw.includes('recharge') ||
+    raw.includes('add') ||
+    raw.includes('addition') ||
+    raw === 'in'
+  ) {
+    return 'in'
+  }
+
+  const quantity = getMovementQuantity(record)
+
+  if (quantity < 0) return 'out'
+  if (quantity > 0 && raw) return 'in'
+
+  return 'unknown'
+}
+
+function buildCreditFlowAnalytics(
+  movements: CreditMovement[],
+  servidores: Servidor[],
+  transactions: Transaction[],
+  month: number,
+  year: number
+): CreditFlowAnalytics {
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const dailyMap = new Map<number, { entradas: number; saidas: number }>()
+  const serverMap = new Map<string, CreditServerRow>()
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    dailyMap.set(day, { entradas: 0, saidas: 0 })
+  }
+
+  servidores.forEach((servidor) => {
+    const id = getServidorId(servidor)
+    const nome = getServerName(servidor)
+
+    if (!id) return
+
+    serverMap.set(id, {
+      id,
+      nome,
+      entradas: 0,
+      saidas: 0,
+      liquido: 0,
+      saldoAtual: getServerCredits(servidor),
+    })
+  })
+
+  const addServerMovement = (
+    serverId: string,
+    fallbackName: string,
+    direction: CreditDirection,
+    quantity: number
+  ) => {
+    const safeServerId = serverId || 'sem-servidor'
+
+    const current = serverMap.get(safeServerId) ?? {
+      id: safeServerId,
+      nome: fallbackName || 'Sem servidor',
+      entradas: 0,
+      saidas: 0,
+      liquido: 0,
+      saldoAtual: 0,
+    }
+
+    if (direction === 'in') current.entradas += quantity
+    if (direction === 'out') current.saidas += quantity
+
+    current.liquido = current.entradas - current.saidas
+    serverMap.set(safeServerId, current)
+  }
+
+  let monthlyMovementCount = 0
+  let monthlyOutMovementCount = 0
+
+  movements
+    .filter((movement) => isRecordInMonth(movement, month, year))
+    .forEach((movement: any) => {
+      const direction = detectCreditDirection(movement)
+      const quantity = Math.abs(getMovementQuantity(movement))
+      const day = getRecordDay(movement)
+
+      if (direction === 'unknown' || quantity <= 0 || !day) return
+
+      const daily = dailyMap.get(day)
+
+      if (daily) {
+        if (direction === 'in') daily.entradas += quantity
+        if (direction === 'out') daily.saidas += quantity
+      }
+
+      const serverId = getMovementServerId(movement)
+      const serverName = String(
+        movement?.server_name ??
+        movement?.serverName ??
+        movement?.servidor_nome ??
+        movement?.servidorNome ??
+        movement?.server?.name ??
+        movement?.servidor?.nome ??
+        ''
+      )
+
+      addServerMovement(serverId, serverName, direction, quantity)
+
+      monthlyMovementCount += 1
+      if (direction === 'out') monthlyOutMovementCount += 1
+    })
+
+  // Fallback defensivo: se o backend ainda não estiver enviando os consumos em movements,
+  // tenta ler créditos vendidos direto das transações do caixa, sem duplicar quando movements já trouxe saídas.
+  if (monthlyOutMovementCount === 0) {
+    transactions
+      .filter((transaction: any) => transaction?.type === 'income' && isRecordInMonth(transaction, month, year))
+      .forEach((transaction: any) => {
+        const quantity = Math.abs(getMovementQuantity(transaction))
+        const day = getRecordDay(transaction)
+
+        if (quantity <= 0 || !day) return
+
+        const daily = dailyMap.get(day)
+        if (daily) daily.saidas += quantity
+
+        addServerMovement(getMovementServerId(transaction), '', 'out', quantity)
+        monthlyMovementCount += 1
+      })
+  }
+
+  const dailyRows = Array.from(dailyMap.entries()).map(([day, values]) => ({
+    day: String(day).padStart(2, '0'),
+    entradas: values.entradas,
+    saidas: values.saidas,
+    liquido: values.entradas - values.saidas,
+  }))
+
+  const activeDailyRows = dailyRows.filter(row => row.entradas > 0 || row.saidas > 0)
+
+  const serverRows = Array.from(serverMap.values())
+    .map(row => ({
+      ...row,
+      liquido: row.entradas - row.saidas,
+    }))
+    .sort((a, b) => {
+      const movementDiff = (b.entradas + b.saidas) - (a.entradas + a.saidas)
+      if (movementDiff !== 0) return movementDiff
+      return b.saldoAtual - a.saldoAtual
+    })
+
+  const activeServerRows = serverRows.filter(
+    row => row.entradas > 0 || row.saidas > 0 || row.saldoAtual > 0
+  )
+
+  const totalEntradas = dailyRows.reduce((sum, row) => sum + row.entradas, 0)
+  const totalSaidas = dailyRows.reduce((sum, row) => sum + row.saidas, 0)
+  const saldoAtualTotal = servidores.reduce((sum, servidor) => sum + getServerCredits(servidor), 0)
+
+  return {
+    totalEntradas,
+    totalSaidas,
+    saldoLiquido: totalEntradas - totalSaidas,
+    saldoAtualTotal,
+    dailyRows,
+    activeDailyRows,
+    serverRows,
+    activeServerRows,
+    hasMonthlyMovements: monthlyMovementCount > 0,
+  }
+}
+
+function CreditFlowSummary({
+  transactions,
+  servidores,
+  movements,
+  month,
+  year,
+}: CreditFlowSummaryProps) {
+  const data = useMemo(
+    () => buildCreditFlowAnalytics(movements, servidores, transactions, month, year),
+    [movements, servidores, transactions, month, year]
+  )
+
+  const cardBaseClass = 'rounded-2xl border bg-card/40 p-4 shadow-sm'
+  const topServers = data.activeServerRows.slice(0, 6)
+  const criticalServers = data.activeServerRows.filter(
+    row => row.saldoAtual > 0 && row.saldoAtual <= CREDIT_WARNING_LIMIT
+  )
+
+  return (
+    <section className="rounded-2xl border border-cyan-500/20 bg-card/40 p-5 shadow-sm">
+      <div className="mb-5 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h3 className="text-base font-semibold">Fluxo de Créditos do Mês</h3>
+          <p className="text-sm text-muted-foreground">
+            Entradas por compras, saídas por vendas/consumo e saldo atual dos servidores.
+          </p>
+        </div>
+
+        {criticalServers.length > 0 && (
+          <div className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-500">
+            {criticalServers.length} servidor{criticalServers.length > 1 ? 'es' : ''} com saldo baixo
+          </div>
+        )}
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className={`${cardBaseClass} border-emerald-500/25`}>
+          <p className="text-xs text-muted-foreground">Créditos comprados</p>
+          <p className="mt-2 text-2xl font-bold text-emerald-500">
+            +{formatCredits(data.totalEntradas)}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">Entraram no mês selecionado</p>
+        </div>
+
+        <div className={`${cardBaseClass} border-rose-500/25`}>
+          <p className="text-xs text-muted-foreground">Créditos vendidos</p>
+          <p className="mt-2 text-2xl font-bold text-rose-500">
+            -{formatCredits(data.totalSaidas)}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">Consumidos em vendas</p>
+        </div>
+
+        <div className={`${cardBaseClass} ${data.saldoLiquido >= 0 ? 'border-emerald-500/25' : 'border-rose-500/25'}`}>
+          <p className="text-xs text-muted-foreground">Saldo líquido do mês</p>
+          <p className={`mt-2 text-2xl font-bold ${data.saldoLiquido >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+            {data.saldoLiquido >= 0 ? '+' : '-'}{formatCredits(Math.abs(data.saldoLiquido))}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">Entradas menos saídas</p>
+        </div>
+
+        <div className={`${cardBaseClass} border-sky-500/25`}>
+          <p className="text-xs text-muted-foreground">Saldo atual</p>
+          <p className="mt-2 text-2xl font-bold text-sky-500">
+            {formatCredits(data.saldoAtualTotal)}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">Somando todos os servidores</p>
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-5 xl:grid-cols-[1.35fr_1fr]">
+        <div className="rounded-2xl border border-border/70 bg-background/30 p-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <h4 className="text-sm font-medium">Entradas x Saídas por dia</h4>
+              <p className="text-xs text-muted-foreground">Visão diária em quantidade de créditos</p>
+            </div>
+          </div>
+
+          <div className="h-[260px]">
+            {data.hasMonthlyMovements ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={data.dailyRows} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.35} />
+                  <XAxis
+                    dataKey="day"
+                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(value) => formatCredits(Number(value))}
+                  />
+                  <Tooltip
+                    cursor={{ fill: 'rgba(148, 163, 184, 0.08)' }}
+                    contentStyle={{
+                      background: 'hsl(var(--popover))',
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: 12,
+                      color: 'hsl(var(--popover-foreground))',
+                    }}
+                    formatter={(value: any, name: any) => [
+                      `${formatCredits(Number(value))} créditos`,
+                      name,
+                    ]}
+                    labelFormatter={(label) => `Dia ${label}`}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="entradas" name="Entradas" fill="var(--color-chart-1)" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="saidas" name="Saídas" fill="var(--color-chart-2)" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-border/70 text-center text-sm text-muted-foreground">
+                Nenhum movimento de crédito encontrado para este mês.
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-border/70 bg-background/30 p-4">
+          <div className="mb-3">
+            <h4 className="text-sm font-medium">Créditos por servidor</h4>
+            <p className="text-xs text-muted-foreground">Compras, consumo e saldo atual</p>
+          </div>
+
+          <div className="overflow-x-auto">
+            <div className="min-w-[520px]">
+              <div className="grid grid-cols-[1.2fr_0.8fr_0.8fr_0.8fr] gap-3 border-b border-border/70 pb-2 text-xs font-medium text-muted-foreground">
+                <span>Servidor</span>
+                <span className="text-right">Entraram</span>
+                <span className="text-right">Saíram</span>
+                <span className="text-right">Saldo</span>
+              </div>
+
+              {topServers.length > 0 ? (
+                topServers.map((server) => (
+                  <div
+                    key={server.id}
+                    className="grid grid-cols-[1.2fr_0.8fr_0.8fr_0.8fr] gap-3 border-b border-border/40 py-3 text-sm last:border-0"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold">{server.nome}</p>
+                      {server.saldoAtual > 0 && server.saldoAtual <= CREDIT_WARNING_LIMIT && (
+                        <p className="text-xs text-amber-500">Saldo baixo</p>
+                      )}
+                    </div>
+                    <span className="text-right text-emerald-500">+{formatCredits(server.entradas)}</span>
+                    <span className="text-right text-rose-500">-{formatCredits(server.saidas)}</span>
+                    <span className="text-right font-medium">{formatCredits(server.saldoAtual)}</span>
+                  </div>
+                ))
+              ) : (
+                <div className="py-8 text-center text-sm text-muted-foreground">
+                  Nenhum servidor com créditos para exibir.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
 
 export function AnalyticsPage({ transactions, servidores, movements, planos }: AnalyticsPageProps) {
   const today = new Date()
@@ -49,6 +597,8 @@ export function AnalyticsPage({ transactions, servidores, movements, planos }: A
     const reportMonthLabel = `${MONTH_NAMES[month]} ${year}`
     const daysInMonth = new Date(year, month + 1, 0).getDate()
     const daysElapsed = isCurrentMonth ? today.getDate() : daysInMonth
+
+    const creditFlow = buildCreditFlowAnalytics(movements, servidores, transactions, month, year)
 
     const monthTransactions = transactions
       .filter((transaction) => {
@@ -176,9 +726,14 @@ export function AnalyticsPage({ transactions, servidores, movements, planos }: A
 
     const creditRows = servidores
       .map((servidor) => {
-        const nome = String((servidor as any).nome ?? (servidor as any).name ?? 'Servidor')
-        const saldo = Number((servidor as any).creditsBalance ?? (servidor as any).credits ?? 0)
-        const custoUnitario = Number((servidor as any).custoUnitario ?? (servidor as any).unitCost ?? 0)
+        const nome = getServerName(servidor)
+        const saldo = getServerCredits(servidor)
+        const custoUnitario = toNumber(
+          (servidor as any).custoUnitario ??
+            (servidor as any).unitCost ??
+            (servidor as any).unit_cost ??
+            0
+        )
         const valorEstoque = saldo * custoUnitario
 
         return {
@@ -386,6 +941,46 @@ export function AnalyticsPage({ transactions, servidores, movements, planos }: A
       { fontSize: 8, headColor: [15, 23, 42] }
     )
 
+    addSectionTitle('Fluxo de créditos do mês')
+
+    addTable(
+      [['Indicador', 'Créditos']],
+      [
+        ['Créditos comprados no mês', formatCredits(creditFlow.totalEntradas)],
+        ['Créditos vendidos/consumidos no mês', formatCredits(creditFlow.totalSaidas)],
+        ['Saldo líquido do mês', `${creditFlow.saldoLiquido >= 0 ? '+' : '-'}${formatCredits(Math.abs(creditFlow.saldoLiquido))}`],
+        ['Saldo atual total dos servidores', formatCredits(creditFlow.saldoAtualTotal)],
+      ],
+      { fontSize: 9, headColor: [14, 116, 144] }
+    )
+
+    addTable(
+      [['Dia', 'Entradas de créditos', 'Saídas de créditos', 'Saldo líquido']],
+      creditFlow.activeDailyRows.length > 0
+        ? creditFlow.activeDailyRows.map(item => [
+            item.day,
+            formatCredits(item.entradas),
+            formatCredits(item.saidas),
+            `${item.liquido >= 0 ? '+' : '-'}${formatCredits(Math.abs(item.liquido))}`,
+          ])
+        : [['-', '0', '0', '0']],
+      { fontSize: 8, headColor: [14, 116, 144] }
+    )
+
+    addTable(
+      [['Servidor', 'Entraram', 'Saíram', 'Saldo líquido', 'Saldo atual']],
+      creditFlow.activeServerRows.length > 0
+        ? creditFlow.activeServerRows.map(item => [
+            item.nome,
+            formatCredits(item.entradas),
+            formatCredits(item.saidas),
+            `${item.liquido >= 0 ? '+' : '-'}${formatCredits(Math.abs(item.liquido))}`,
+            formatCredits(item.saldoAtual),
+          ])
+        : [['Nenhum servidor com movimentação', '-', '-', '-', '-']],
+      { fontSize: 8, headColor: [14, 116, 144] }
+    )
+
     addSectionTitle('Créditos atuais por servidor')
 
     addSmallText('Esta seção mostra a posição atual dos créditos no momento da emissão do relatório.')
@@ -395,10 +990,7 @@ export function AnalyticsPage({ transactions, servidores, movements, planos }: A
       creditRows.length > 0
         ? creditRows.map(item => [
             item.nome,
-            item.saldo.toLocaleString('pt-BR', {
-              minimumFractionDigits: 0,
-              maximumFractionDigits: 2,
-            }),
+            formatCredits(item.saldo),
             formatCurrency(item.custoUnitario),
             formatCurrency(item.valorEstoque),
           ])
@@ -411,10 +1003,7 @@ export function AnalyticsPage({ transactions, servidores, movements, planos }: A
       [
         [
           'Total geral de créditos',
-          totalCredits.toLocaleString('pt-BR', {
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 2,
-          }),
+          formatCredits(totalCredits),
         ],
         ['Valor estimado total em estoque', formatCurrency(totalStockValue)],
       ],
@@ -424,6 +1013,7 @@ export function AnalyticsPage({ transactions, servidores, movements, planos }: A
     addSectionTitle('Observações')
 
     addSmallText(`Este relatório considera apenas as transações registradas em ${reportMonthLabel}.`)
+    addSmallText('O fluxo de créditos considera movimentos do mês selecionado e o saldo atual dos servidores.')
     addSmallText('Os créditos por servidor representam o saldo atual no momento da emissão, não um fechamento histórico mensal.')
     addSmallText('Para análise detalhada de cada lançamento individual, utilize também a exportação CSV da aba Transações.')
 
@@ -477,6 +1067,15 @@ export function AnalyticsPage({ transactions, servidores, movements, planos }: A
         month={month}
         year={year}
         prevTransactions={transactions}
+      />
+
+      {/* Credit flow */}
+      <CreditFlowSummary
+        transactions={transactions}
+        servidores={servidores}
+        movements={movements}
+        month={month}
+        year={year}
       />
 
       {/* Daily flow chart */}

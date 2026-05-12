@@ -540,7 +540,7 @@ function CreditFlowSummary({
           <p className={`mt-2 text-2xl font-bold ${data.saldoLiquido >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
             {data.saldoLiquido >= 0 ? '+' : '-'}{formatCredits(Math.abs(data.saldoLiquido))}
           </p>
-          <p className="mt-1 text-xs text-muted-foreground">Entradas menos saídas</p>
+          <p className="mt-1 text-xs text-muted-foreground">Diferença entre entradas e saídas</p>
         </div>
 
         <div className={`${cardBaseClass} border-sky-500/25`}>
@@ -566,7 +566,7 @@ function CreditFlowSummary({
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={chartRows}
-                  margin={{ top: 8, right: isMobile ? 4 : 12, left: isMobile ? -18 : 0, bottom: 0 }}
+                  margin={{ top: 8, right: isMobile ? 8 : 12, left: 0, bottom: 0 }}
                   barCategoryGap={isMobile ? 8 : '10%'}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.35} />
@@ -581,22 +581,14 @@ function CreditFlowSummary({
                     tick={{ fill: '#94a3b8', fontSize: isMobile ? 10 : 11 }}
                     tickLine={false}
                     axisLine={false}
-                    width={isMobile ? 34 : 40}
+                    width={isMobile ? 32 : 40}
                     tickFormatter={(value) => formatCredits(Number(value))}
                   />
                   <Tooltip
                     cursor={{ fill: 'rgba(148, 163, 184, 0.08)' }}
-                    contentStyle={{
-                      background: 'hsl(var(--popover))',
-                      border: '1px solid hsl(var(--border))',
-                      borderRadius: 12,
-                      color: 'hsl(var(--popover-foreground))',
-                    }}
-                    formatter={(value: any, name: any) => [
-                      `${formatCredits(Number(value))} créditos`,
-                      name,
-                    ]}
-                    labelFormatter={(label) => `Dia ${label}`}
+                    content={<CustomCreditTooltip />}
+                    allowEscapeViewBox={{ x: false, y: true }}
+                    wrapperStyle={{ zIndex: 50, outline: 'none' }}
                   />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
                   <Bar dataKey="entradas" name="Entradas" fill="var(--color-chart-1)" radius={[6, 6, 0, 0]} />
@@ -1064,14 +1056,14 @@ export function AnalyticsPage({ transactions, servidores, movements, planos }: A
       [
         ['Créditos comprados no mês', formatCredits(creditFlow.totalEntradas)],
         ['Créditos vendidos/consumidos no mês', formatCredits(creditFlow.totalSaidas)],
-        ['Saldo líquido do mês', `${creditFlow.saldoLiquido >= 0 ? '+' : '-'}${formatCredits(Math.abs(creditFlow.saldoLiquido))}`],
+        ['Variação do mês', `${creditFlow.saldoLiquido >= 0 ? '+' : '-'}${formatCredits(Math.abs(creditFlow.saldoLiquido))}`],
         ['Saldo atual total dos servidores', formatCredits(creditFlow.saldoAtualTotal)],
       ],
       { fontSize: 9, headColor: [14, 116, 144] }
     )
 
     addTable(
-      [['Dia', 'Entradas de créditos', 'Saídas de créditos', 'Saldo líquido']],
+      [['Dia', 'Entradas de créditos', 'Saídas de créditos', 'Variação']],
       creditFlow.activeDailyRows.length > 0
         ? creditFlow.activeDailyRows.map(item => [
             item.day,
@@ -1084,7 +1076,7 @@ export function AnalyticsPage({ transactions, servidores, movements, planos }: A
     )
 
     addTable(
-      [['Servidor', 'Entraram', 'Saíram', 'Saldo líquido', 'Saldo atual']],
+      [['Servidor', 'Entraram', 'Saíram', 'Variação', 'Saldo atual']],
       creditFlow.activeServerRows.length > 0
         ? creditFlow.activeServerRows.map(item => [
             item.nome,

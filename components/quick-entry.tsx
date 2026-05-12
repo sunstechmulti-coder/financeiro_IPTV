@@ -7,15 +7,18 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { formatCurrency } from '@/lib/format'
 import { format } from 'date-fns'
-import type { PlanoEntrada, Servidor, Transaction } from '@/lib/types'
+import type { PlanoEntrada, Servidor, Transaction, CreditMovement } from '@/lib/types'
 import { generateId } from '@/lib/storage'
+
+type SaveTransactionResult = Transaction | null | undefined | void
 
 interface QuickEntryProps {
   planos: PlanoEntrada[]
   servidores: Servidor[]
-  onSave: (transaction: Transaction) => Promise<void>
+  onSave: (transaction: Transaction) => Promise<SaveTransactionResult>
   onSaveMultiple?: (transactions: Transaction[]) => void
   onAdjustCredits?: (serverId: string, delta: number) => Promise<boolean>
+  onAddCreditMovement?: (movement: Omit<CreditMovement, 'id'>) => Promise<CreditMovement | null | undefined | void>
 }
 
 interface EntryLog {
@@ -32,7 +35,27 @@ function getTodayISODate() {
   return format(new Date(), 'yyyy-MM-dd')
 }
 
-export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: QuickEntryProps) {
+function getSavedTransactionId(savedTransaction: SaveTransactionResult, fallbackId: string) {
+  if (
+    savedTransaction &&
+    typeof savedTransaction === 'object' &&
+    'id' in savedTransaction &&
+    typeof savedTransaction.id === 'string' &&
+    savedTransaction.id.length > 0
+  ) {
+    return savedTransaction.id
+  }
+
+  return fallbackId
+}
+
+export function QuickEntry({
+  planos,
+  servidores,
+  onSave,
+  onAdjustCredits,
+  onAddCreditMovement,
+}: QuickEntryProps) {
   const [expanded, setExpanded] = useState(false)
   const [selectedDate, setSelectedDate] = useState(() => getTodayISODate())
   const [codigoInput, setCodigoInput] = useState('')
@@ -213,10 +236,25 @@ export function QuickEntry({ planos, servidores, onSave, onAdjustCredits }: Quic
         }
       }
 
-      await onSave(tx)
+      const savedTransaction = await onSave(tx)
+      const savedTransactionId = getSavedTransactionId(savedTransaction, tx.id)
+
+      if (onAddCreditMovement && creditosToSave > 0) {
+        const movement = await onAddCreditMovement({
+          serverId: planoToSave.servidorId,
+          date: dateToSave,
+          type: 'saida',
+          credits: creditosToSave,
+          transactionId: savedTransactionId,
+        })
+
+        if (movement === null) {
+          console.warn('Lançamento salvo, mas o histórico de créditos não foi registrado.')
+        }
+      }
 
       setRecentLogs(prev => [{
-        id: tx.id,
+        id: savedTransactionId,
         codigo: planoToSave.codigo,
         descricao: planoToSave.descricao,
         servidor: servidorToLog?.nome ?? '',

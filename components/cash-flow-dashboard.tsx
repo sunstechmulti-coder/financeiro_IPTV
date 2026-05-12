@@ -28,7 +28,7 @@ import { AnalyticsPage } from '@/components/analytics/analytics-page'
 import { DailyRobotAssistant } from '@/components/daily-robot-assistant'
 import { ResellerClientsPanel } from '@/components/reseller/reseller-clients-panel'
 import { cn } from '@/lib/utils'
-import type { Transaction } from '@/lib/types'
+import type { Transaction, CreditMovement } from '@/lib/types'
 import { useSupabaseData } from '@/hooks/use-supabase-data'
 import { createClient } from '@/lib/supabase/client'
 
@@ -348,6 +348,7 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
     updateTransaction,
     deleteTransaction,
     adjustCreditsBalance,
+    addCreditMovement,
     removeCreditMovementByTransaction,
     removeActivationTransactionByTransactionId,
     getActivationTransactionByTransactionId,
@@ -422,11 +423,30 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
     }
   }, [transactions, selectedMonth, selectedYear])
 
+  const registerCreditMovementFromTransaction = async (
+    transaction: Transaction | null | undefined
+  ) => {
+    if (!transaction?.serverId) return
+
+    const creditsDelta = Number(transaction.creditsDelta ?? 0)
+
+    if (!Number.isFinite(creditsDelta) || creditsDelta === 0) return
+
+    await addCreditMovement({
+      serverId: transaction.serverId,
+      date: transaction.date,
+      type: (creditsDelta > 0 ? 'purchase' : 'sale') as CreditMovement['type'],
+      credits: Math.abs(creditsDelta),
+      transactionId: transaction.id,
+    })
+  }
+
   const handleSaveTransaction = async (transaction: Transaction) => {
     if (editingTransaction) {
       await updateTransaction(transaction)
     } else {
-      await addTransaction(transaction)
+      const savedTransaction = await addTransaction(transaction)
+      await registerCreditMovementFromTransaction(savedTransaction)
     }
 
     setEditingTransaction(null)
@@ -434,7 +454,8 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
   }
 
   const handleQuickEntrySaveTransaction = async (transaction: Transaction) => {
-    await addTransaction(transaction)
+    const savedTransaction = await addTransaction(transaction)
+    await registerCreditMovementFromTransaction(savedTransaction)
   }
 
   const handleDeleteTransaction = async (id: string) => {

@@ -665,7 +665,7 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
                 balance={balance}
               />
 
-              <CreditsCard servidores={servidores} movements={movements} />
+              <CreditsCard servidores={servidores} movements={movements} transactions={transactions} />
 
               <RevenueHeatmap transactions={transactions} />
             </>

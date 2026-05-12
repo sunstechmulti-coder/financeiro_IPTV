@@ -3,24 +3,123 @@
 import { Database, MessageCircle } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import type { Servidor } from '@/lib/types'
-import type { CreditMovement } from '@/lib/types'
+import { cn } from '@/lib/utils'
+import type { CreditMovement, Servidor, Transaction } from '@/lib/types'
 import { formatDate } from '@/lib/format'
 
 interface CreditsCardProps {
   servidores: Servidor[]
   movements: CreditMovement[]
+  transactions?: Transaction[]
 }
 
-export function CreditsCard({ servidores, movements }: CreditsCardProps) {
+type MovementDirection = 'in' | 'out'
+
+function normalizeText(value: unknown) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+}
+
+function toNumber(value: unknown) {
+  if (value === null || value === undefined || value === '') return 0
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0
+  }
+
+  const parsed = Number(String(value).replace(/\./g, '').replace(',', '.'))
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function formatCredits(value: number) {
+  return value.toLocaleString('pt-BR', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })
+}
+
+function getMovementDirection(movement: CreditMovement): MovementDirection {
+  const rawType = normalizeText(movement.type)
+  const credits = toNumber(movement.credits)
+
+  if (
+    rawType.includes('purchase') ||
+    rawType.includes('compra') ||
+    rawType.includes('entrada') ||
+    rawType.includes('recarga') ||
+    rawType === 'in'
+  ) {
+    return 'in'
+  }
+
+  if (
+    rawType.includes('sale') ||
+    rawType.includes('venda') ||
+    rawType.includes('consumption') ||
+    rawType.includes('consumo') ||
+    rawType.includes('saida') ||
+    rawType.includes('uso') ||
+    rawType === 'out'
+  ) {
+    return 'out'
+  }
+
+  return credits >= 0 ? 'in' : 'out'
+}
+
+function getMovementTimestamp(movement: CreditMovement, transaction?: Transaction) {
+  const rawDate =
+    transaction?.createdAt ||
+    transaction?.date ||
+    movement.date
+
+  const parsed = rawDate?.includes?.('T')
+    ? new Date(rawDate)
+    : new Date(`${rawDate}T00:00:00`)
+
+  return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime()
+}
+
+export function CreditsCard({ servidores, movements, transactions = [] }: CreditsCardProps) {
   const totalCredits = servidores.reduce((sum, s) => sum + (s.creditsBalance ?? 0), 0)
 
-  const recentMovements = [...movements]
-    .sort((a, b) => b.date.localeCompare(a.date))
-    .slice(0, 8)
+  const transactionsById = new Map(transactions.map((transaction) => [transaction.id, transaction]))
 
-  const getServidorNome = (id: string) =>
-    servidores.find((s) => s.id === id)?.nome ?? id
+  const getServidorNome = (id: string | null | undefined) => {
+    if (!id) return 'Sem servidor'
+    return servidores.find((s) => s.id === id)?.nome ?? id
+  }
+
+  const recentMovements = [...movements]
+    .map((movement) => {
+      const transaction = movement.transactionId
+        ? transactionsById.get(movement.transactionId)
+        : undefined
+
+      const direction = getMovementDirection(movement)
+      const serverId = movement.serverId || transaction?.serverId || ''
+      const serverName = getServidorNome(serverId)
+      const credits = Math.abs(toNumber(movement.credits))
+      const description =
+        transaction?.description ||
+        (direction === 'in'
+          ? `Entrada de créditos — ${serverName}`
+          : `Saída de créditos — ${serverName}`)
+
+      return {
+        ...movement,
+        direction,
+        serverId,
+        serverName,
+        description,
+        credits,
+        timestamp: getMovementTimestamp(movement, transaction),
+      }
+    })
+    .sort((a, b) => b.timestamp - a.timestamp)
+    .slice(0, 8)
 
   const getRechargeUrl = (servidor: Servidor) => {
     const rawPhone = servidor.supplierWhatsapp ?? ''
@@ -66,7 +165,7 @@ Pelo custo cadastrado, o valor estimado é de R$ ${(servidor.custoUnitario * rec
           <div className="text-right">
             <p className="text-xs text-muted-foreground">Total geral</p>
             <p className="text-lg font-bold tabular-nums text-primary">
-              {totalCredits.toLocaleString('pt-BR')}
+              {formatCredits(totalCredits)}
             </p>
           </div>
         </div>
@@ -89,26 +188,30 @@ Pelo custo cadastrado, o valor estimado é de R$ ${(servidor.custoUnitario * rec
               return (
                 <div
                   key={s.id}
-                  className={`rounded-lg border p-3 text-center ${isZero
-                    ? 'border-red-500/40 bg-red-500/10'
-                    : isLow
-                      ? 'border-amber-500/40 bg-amber-500/10'
-                      : 'border-income/30 bg-income/5'
-                    }`}
+                  className={cn(
+                    'rounded-lg border p-3 text-center',
+                    isZero
+                      ? 'border-red-500/40 bg-red-500/10'
+                      : isLow
+                        ? 'border-amber-500/40 bg-amber-500/10'
+                        : 'border-income/30 bg-income/5'
+                  )}
                 >
                   <p className="truncate text-xs font-medium text-muted-foreground">
                     {s.nome}
                   </p>
 
                   <p
-                    className={`mt-1 text-xl font-bold tabular-nums ${isZero
-                      ? 'text-red-500'
-                      : isLow
-                        ? 'text-amber-500'
-                        : 'text-income'
-                      }`}
+                    className={cn(
+                      'mt-1 text-xl font-bold tabular-nums',
+                      isZero
+                        ? 'text-red-500'
+                        : isLow
+                          ? 'text-amber-500'
+                          : 'text-income'
+                    )}
                   >
-                    {bal.toLocaleString('pt-BR')}
+                    {formatCredits(bal)}
                   </p>
 
                   {isZero && (
@@ -140,29 +243,77 @@ Pelo custo cadastrado, o valor estimado é de R$ ${(servidor.custoUnitario * rec
         {recentMovements.length > 0 && (
           <div>
             <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Últimas movimentações
+              Últimas movimentações de créditos
             </p>
-            <div className="divide-y rounded-lg border">
-              {recentMovements.map((m) => (
-                <div key={m.id} className="flex items-center justify-between px-3 py-2">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span
-                      className={`h-1.5 w-1.5 shrink-0 rounded-full ${m.type === 'purchase' ? 'bg-income' : 'bg-expense'
-                        }`}
-                    />
-                    <span className="truncate text-xs text-muted-foreground">
-                      {formatDate(m.date)} — {getServidorNome(m.serverId)}
-                    </span>
-                  </div>
-                  <span
-                    className={`ml-2 shrink-0 text-sm font-semibold tabular-nums ${m.type === 'purchase' ? 'text-income' : 'text-expense'
-                      }`}
-                  >
-                    {m.type === 'purchase' ? '+' : '−'}
-                    {m.credits}
-                  </span>
-                </div>
-              ))}
+
+            <div className="overflow-hidden rounded-lg border">
+              <div className="hidden grid-cols-[110px_90px_minmax(130px,1fr)_110px] gap-3 border-b bg-muted/20 px-3 py-2 text-xs font-medium text-muted-foreground md:grid">
+                <span>Data</span>
+                <span>Tipo</span>
+                <span>Operação</span>
+                <span className="text-right">Créditos</span>
+              </div>
+
+              <div className="divide-y">
+                {recentMovements.map((movement) => {
+                  const isIn = movement.direction === 'in'
+
+                  return (
+                    <div
+                      key={movement.id}
+                      className="px-3 py-3 md:grid md:grid-cols-[110px_90px_minmax(130px,1fr)_110px] md:items-center md:gap-3 md:py-2.5"
+                    >
+                      <div className="flex items-start justify-between gap-3 md:contents">
+                        <div className="min-w-0 md:order-1">
+                          <p className="text-xs font-medium text-muted-foreground md:text-sm md:text-foreground">
+                            {formatDate(movement.date)}
+                          </p>
+
+                          <p className="mt-1 text-xs text-muted-foreground md:hidden">
+                            {movement.serverName}
+                          </p>
+                        </div>
+
+                        <div className="md:order-2">
+                          <span
+                            className={cn(
+                              'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium',
+                              isIn ? 'bg-income/10 text-income' : 'bg-expense/10 text-expense'
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                'h-1.5 w-1.5 rounded-full',
+                                isIn ? 'bg-income' : 'bg-expense'
+                              )}
+                            />
+                            {isIn ? 'Entrada' : 'Saída'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="mt-2 min-w-0 md:order-3 md:mt-0">
+                        <p className="truncate text-sm font-medium text-foreground">
+                          {movement.description}
+                        </p>
+                        <p className="mt-0.5 hidden text-xs text-muted-foreground md:block">
+                          {movement.serverName}
+                        </p>
+                      </div>
+
+                      <div
+                        className={cn(
+                          'mt-2 text-right text-sm font-bold tabular-nums md:order-4 md:mt-0',
+                          isIn ? 'text-income' : 'text-expense'
+                        )}
+                      >
+                        {isIn ? '+' : '−'}
+                        {formatCredits(movement.credits)}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           </div>
         )}

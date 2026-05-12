@@ -1,6 +1,6 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
+import { useState } from "react";
 import {
   ArrowUpDown,
   Pencil,
@@ -8,16 +8,16 @@ import {
   Search,
   Filter,
   Download,
-} from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -25,7 +25,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table'
+} from "@/components/ui/table";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,134 +35,200 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
-import { cn } from '@/lib/utils'
-import { formatCurrency, formatDate, getMonthYear } from '@/lib/format'
-import type { Transaction, SortDirection, FilterType } from '@/lib/types'
+} from "@/components/ui/alert-dialog";
+import { cn } from "@/lib/utils";
+import { formatCurrency, formatDate, getMonthYear } from "@/lib/format";
+import type {
+  Transaction,
+  Servidor,
+  SortDirection,
+  FilterType,
+} from "@/lib/types";
 
 interface TransactionsTableProps {
-  transactions: Transaction[]
-  onEdit: (transaction: Transaction) => void
-  onDelete: (id: string) => void
+  transactions: Transaction[];
+  servidores?: Servidor[];
+  onEdit: (transaction: Transaction) => void;
+  onDelete: (id: string) => void;
 }
 
 function getCurrentMonthKey() {
-  const today = new Date()
-  const year = today.getFullYear()
-  const month = String(today.getMonth() + 1).padStart(2, '0')
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
 
-  return `${year}-${month}`
+  return `${year}-${month}`;
+}
+
+function getTransactionCreditsDelta(transaction: Transaction) {
+  const raw = (transaction as unknown as Record<string, unknown>).creditsDelta;
+
+  if (raw === null || raw === undefined || raw === "") return 0;
+
+  const numericValue = Number(raw);
+  return Number.isFinite(numericValue) ? numericValue : 0;
+}
+
+function formatCreditsDelta(value: number) {
+  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
+  const absValue = Math.abs(value);
+  const formatted = absValue.toLocaleString("pt-BR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+
+  return `${sign}${formatted} crédito${absValue === 1 ? "" : "s"}`;
+}
+
+function getTransactionServerName(
+  transaction: Transaction,
+  servidores: Servidor[] = [],
+) {
+  const serverId = (transaction as unknown as Record<string, unknown>).serverId;
+
+  if (!serverId) return "";
+
+  const servidor = servidores.find((item) => item.id === String(serverId));
+  return servidor?.nome ?? "";
+}
+
+function getCreditTextColor(delta: number) {
+  if (delta > 0) return "text-income";
+  if (delta < 0) return "text-expense";
+  return "text-muted-foreground";
 }
 
 export function TransactionsTable({
   transactions,
+  servidores = [],
   onEdit,
   onDelete,
 }: TransactionsTableProps) {
-  const currentMonthKey = getCurrentMonthKey()
+  const currentMonthKey = getCurrentMonthKey();
 
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
-  const [filterType, setFilterType] = useState<FilterType>('all')
-  const [filterMonth, setFilterMonth] = useState<string>(currentMonthKey)
-  const [filterDate, setFilterDate] = useState<string>('')
-  const [search, setSearch] = useState('')
-  const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [filterType, setFilterType] = useState<FilterType>("all");
+  const [filterMonth, setFilterMonth] = useState<string>(currentMonthKey);
+  const [filterDate, setFilterDate] = useState<string>("");
+  const [search, setSearch] = useState("");
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const transactionsWithIndex = transactions.map((transaction, index) => ({
     transaction,
     index,
-  }))
+  }));
 
   // Get unique months from transactions, keeping current month available even if empty
   const months = Array.from(
-    new Set([currentMonthKey, ...transactions.map((t) => t.date.substring(0, 7))])
-  ).sort((a, b) => b.localeCompare(a))
+    new Set([
+      currentMonthKey,
+      ...transactions.map((t) => t.date.substring(0, 7)),
+    ]),
+  ).sort((a, b) => b.localeCompare(a));
 
   // Filter and sort transactions
   const filteredTransactions = transactionsWithIndex
     .filter(({ transaction: t }) => {
-      if (filterType !== 'all' && t.type !== filterType) return false
-      if (filterMonth !== 'all' && !t.date.startsWith(filterMonth)) return false
-      if (filterDate && t.date !== filterDate) return false
-      if (search && !t.description.toLowerCase().includes(search.toLowerCase()))
-        return false
-      return true
+      if (filterType !== "all" && t.type !== filterType) return false;
+      if (filterMonth !== "all" && !t.date.startsWith(filterMonth))
+        return false;
+      if (filterDate && t.date !== filterDate) return false;
+      const serverName = getTransactionServerName(t, servidores);
+      const searchText = `${t.description} ${serverName}`.toLowerCase();
+      if (search && !searchText.includes(search.toLowerCase())) return false;
+      return true;
     })
     .sort((a, b) => {
-      const dateA = new Date(a.transaction.date + 'T00:00:00').getTime()
-      const dateB = new Date(b.transaction.date + 'T00:00:00').getTime()
+      const dateA = new Date(a.transaction.date + "T00:00:00").getTime();
+      const dateB = new Date(b.transaction.date + "T00:00:00").getTime();
 
       if (dateA !== dateB) {
-        return sortDirection === 'asc' ? dateA - dateB : dateB - dateA
+        return sortDirection === "asc" ? dateA - dateB : dateB - dateA;
       }
 
-      return sortDirection === 'asc' ? b.index - a.index : a.index - b.index
+      return sortDirection === "asc" ? b.index - a.index : a.index - b.index;
     })
-    .map(({ transaction }) => transaction)
+    .map(({ transaction }) => transaction);
 
   // Calculate running balance
-  const balances = new Map<string, number>()
-  let runningBalance = 0
+  const balances = new Map<string, number>();
+  let runningBalance = 0;
 
   // Quando um mês está selecionado, o saldo começa do zero naquele mês.
   // Quando "Todos os Meses" está selecionado, mantém o saldo acumulado geral.
-  const balanceBaseTransactions = transactionsWithIndex.filter(({ transaction: t }) => {
-    if (filterMonth === 'all') return true
-    return t.date.startsWith(filterMonth)
-  })
+  const balanceBaseTransactions = transactionsWithIndex.filter(
+    ({ transaction: t }) => {
+      if (filterMonth === "all") return true;
+      return t.date.startsWith(filterMonth);
+    },
+  );
 
   const allSortedTransactions = [...balanceBaseTransactions]
     .sort((a, b) => {
-      const dateA = new Date(a.transaction.date + 'T00:00:00').getTime()
-      const dateB = new Date(b.transaction.date + 'T00:00:00').getTime()
+      const dateA = new Date(a.transaction.date + "T00:00:00").getTime();
+      const dateB = new Date(b.transaction.date + "T00:00:00").getTime();
 
       if (dateA !== dateB) {
-        return dateA - dateB
+        return dateA - dateB;
       }
 
-      return b.index - a.index
+      return b.index - a.index;
     })
-    .map(({ transaction }) => transaction)
+    .map(({ transaction }) => transaction);
 
   allSortedTransactions.forEach((t) => {
-    if (t.type === 'income') {
-      runningBalance += t.amount
+    if (t.type === "income") {
+      runningBalance += t.amount;
     } else {
-      runningBalance -= t.amount
+      runningBalance -= t.amount;
     }
-    balances.set(t.id, runningBalance)
-  })
+    balances.set(t.id, runningBalance);
+  });
 
   const toggleSort = () => {
-    setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
-  }
+    setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+  };
 
   const handleDelete = () => {
     if (deleteId) {
-      onDelete(deleteId)
-      setDeleteId(null)
+      onDelete(deleteId);
+      setDeleteId(null);
     }
-  }
+  };
 
   const exportCSV = () => {
-    const headers = ['Data', 'Tipo', 'Descrição', 'Valor', 'Saldo']
-    const rows = filteredTransactions.map((t) => [
-      formatDate(t.date),
-      t.type === 'income' ? 'Entrada' : 'Saída',
-      t.description,
-      t.amount.toFixed(2).replace('.', ','),
-      (balances.get(t.id) || 0).toFixed(2).replace('.', ','),
-    ])
+    const headers = [
+      "Data",
+      "Tipo",
+      "Descrição",
+      "Servidor",
+      "Valor",
+      "Créditos",
+      "Saldo",
+    ];
+    const rows = filteredTransactions.map((t) => {
+      const creditsDelta = getTransactionCreditsDelta(t);
 
-    const csv = [headers, ...rows].map((row) => row.join(';')).join('\n')
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `fluxo-caixa-${new Date().toISOString().split('T')[0]}.csv`
-    link.click()
-    URL.revokeObjectURL(url)
-  }
+      return [
+        formatDate(t.date),
+        t.type === "income" ? "Entrada" : "Saída",
+        t.description,
+        getTransactionServerName(t, servidores),
+        t.amount.toFixed(2).replace(".", ","),
+        creditsDelta === 0 ? "" : formatCreditsDelta(creditsDelta),
+        (balances.get(t.id) || 0).toFixed(2).replace(".", ","),
+      ];
+    });
+
+    const csv = [headers, ...rows].map((row) => row.join(";")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `fluxo-caixa-${new Date().toISOString().split("T")[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="space-y-4">
@@ -178,7 +244,10 @@ export function TransactionsTable({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Select value={filterType} onValueChange={(v) => setFilterType(v as FilterType)}>
+          <Select
+            value={filterType}
+            onValueChange={(v) => setFilterType(v as FilterType)}
+          >
             <SelectTrigger className="w-[130px]">
               <Filter className="mr-2 h-4 w-4" />
               <SelectValue placeholder="Tipo" />
@@ -198,7 +267,7 @@ export function TransactionsTable({
               <SelectItem value="all">Todos os Meses</SelectItem>
               {months.map((month) => (
                 <SelectItem key={month} value={month}>
-                  {getMonthYear(month + '-01')}
+                  {getMonthYear(month + "-01")}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -227,100 +296,133 @@ export function TransactionsTable({
       ) : (
         <>
           <div className="space-y-3 md:hidden">
-            {filteredTransactions.map((transaction) => (
-              <div
-                key={transaction.id}
-                className={cn(
-                  'rounded-xl border p-4 transition-colors',
-                  transaction.type === 'income'
-                    ? 'border-income-muted/30 bg-income-muted/10'
-                    : 'border-expense-muted/30 bg-expense-muted/10'
-                )}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-semibold">
-                      {transaction.description}
-                    </div>
+            {filteredTransactions.map((transaction) => {
+              const creditsDelta = getTransactionCreditsDelta(transaction);
+              const serverName = getTransactionServerName(
+                transaction,
+                servidores,
+              );
 
-                    <div className="mt-2">
-                      <span
-                        className={cn(
-                          'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium',
-                          transaction.type === 'income'
-                            ? 'bg-income/10 text-income'
-                            : 'bg-expense/10 text-expense'
-                        )}
-                      >
+              return (
+                <div
+                  key={transaction.id}
+                  className={cn(
+                    "rounded-xl border p-4 transition-colors",
+                    transaction.type === "income"
+                      ? "border-income-muted/30 bg-income-muted/10"
+                      : "border-expense-muted/30 bg-expense-muted/10",
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-semibold">
+                        {transaction.description}
+                      </div>
+
+                      <div className="mt-2">
                         <span
                           className={cn(
-                            'h-1.5 w-1.5 rounded-full',
-                            transaction.type === 'income' ? 'bg-income' : 'bg-expense'
+                            "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium",
+                            transaction.type === "income"
+                              ? "bg-income/10 text-income"
+                              : "bg-expense/10 text-expense",
                           )}
-                        />
-                        {transaction.type === 'income' ? 'Entrada' : 'Saída'}
-                      </span>
+                        >
+                          <span
+                            className={cn(
+                              "h-1.5 w-1.5 rounded-full",
+                              transaction.type === "income"
+                                ? "bg-income"
+                                : "bg-expense",
+                            )}
+                          />
+                          {transaction.type === "income" ? "Entrada" : "Saída"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => onEdit(transaction)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                        <span className="sr-only">Editar</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => setDeleteId(transaction.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        <span className="sr-only">Excluir</span>
+                      </Button>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => onEdit(transaction)}
-                    >
-                      <Pencil className="h-4 w-4" />
-                      <span className="sr-only">Editar</span>
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="text-destructive hover:text-destructive"
-                      onClick={() => setDeleteId(transaction.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      <span className="sr-only">Excluir</span>
-                    </Button>
+                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                    <div>
+                      <div className="text-xs text-muted-foreground">Data</div>
+                      <div className="mt-1 font-medium">
+                        {formatDate(transaction.date)}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-xs text-muted-foreground">Valor</div>
+                      <div
+                        className={cn(
+                          "mt-1 font-semibold",
+                          transaction.type === "income"
+                            ? "text-income"
+                            : "text-expense",
+                        )}
+                      >
+                        {transaction.type === "income" ? "+" : "-"}
+                        {formatCurrency(transaction.amount)}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-xs text-muted-foreground">
+                        Créditos
+                      </div>
+                      <div
+                        className={cn(
+                          "mt-1 font-semibold tabular-nums",
+                          getCreditTextColor(creditsDelta),
+                        )}
+                      >
+                        {creditsDelta === 0
+                          ? "—"
+                          : formatCreditsDelta(creditsDelta)}
+                      </div>
+                      {serverName && (
+                        <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                          {serverName}
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="text-xs text-muted-foreground">Saldo</div>
+                      <div
+                        className={cn(
+                          "mt-1 font-semibold",
+                          (balances.get(transaction.id) || 0) >= 0
+                            ? "text-income"
+                            : "text-expense",
+                        )}
+                      >
+                        {formatCurrency(balances.get(transaction.id) || 0)}
+                      </div>
+                    </div>
                   </div>
                 </div>
-
-                <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
-                  <div>
-                    <div className="text-xs text-muted-foreground">Data</div>
-                    <div className="mt-1 font-medium">
-                      {formatDate(transaction.date)}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="text-xs text-muted-foreground">Valor</div>
-                    <div
-                      className={cn(
-                        'mt-1 font-semibold',
-                        transaction.type === 'income' ? 'text-income' : 'text-expense'
-                      )}
-                    >
-                      {transaction.type === 'income' ? '+' : '-'}
-                      {formatCurrency(transaction.amount)}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="text-xs text-muted-foreground">Saldo</div>
-                    <div
-                      className={cn(
-                        'mt-1 font-semibold',
-                        (balances.get(transaction.id) || 0) >= 0
-                          ? 'text-income'
-                          : 'text-expense'
-                      )}
-                    >
-                      {formatCurrency(balances.get(transaction.id) || 0)}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <div className="hidden rounded-lg border bg-card md:block">
@@ -341,87 +443,119 @@ export function TransactionsTable({
                   <TableHead>Tipo</TableHead>
                   <TableHead>Descrição</TableHead>
                   <TableHead className="text-right">Valor</TableHead>
+                  <TableHead className="text-right">Créditos</TableHead>
                   <TableHead className="text-right">Saldo</TableHead>
                   <TableHead className="w-[90px] text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredTransactions.map((transaction) => (
-                  <TableRow
-                    key={transaction.id}
-                    className={cn(
-                      'transition-colors',
-                      transaction.type === 'income'
-                        ? 'bg-income-muted/10 hover:bg-income-muted/20'
-                        : 'bg-expense-muted/10 hover:bg-expense-muted/20'
-                    )}
-                  >
-                    <TableCell className="font-medium">
-                      {formatDate(transaction.date)}
-                    </TableCell>
-                    <TableCell>
-                      <span
-                        className={cn(
-                          'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium',
-                          transaction.type === 'income'
-                            ? 'bg-income/10 text-income'
-                            : 'bg-expense/10 text-expense'
-                        )}
-                      >
+                {filteredTransactions.map((transaction) => {
+                  const creditsDelta = getTransactionCreditsDelta(transaction);
+                  const serverName = getTransactionServerName(
+                    transaction,
+                    servidores,
+                  );
+
+                  return (
+                    <TableRow
+                      key={transaction.id}
+                      className={cn(
+                        "transition-colors",
+                        transaction.type === "income"
+                          ? "bg-income-muted/10 hover:bg-income-muted/20"
+                          : "bg-expense-muted/10 hover:bg-expense-muted/20",
+                      )}
+                    >
+                      <TableCell className="font-medium">
+                        {formatDate(transaction.date)}
+                      </TableCell>
+                      <TableCell>
                         <span
                           className={cn(
-                            'h-1.5 w-1.5 rounded-full',
-                            transaction.type === 'income' ? 'bg-income' : 'bg-expense'
+                            "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium",
+                            transaction.type === "income"
+                              ? "bg-income/10 text-income"
+                              : "bg-expense/10 text-expense",
                           )}
-                        />
-                        {transaction.type === 'income' ? 'Entrada' : 'Saída'}
-                      </span>
-                    </TableCell>
-                    <TableCell className="max-w-[200px] truncate">
-                      {transaction.description}
-                    </TableCell>
-                    <TableCell
-                      className={cn(
-                        'text-right font-medium',
-                        transaction.type === 'income' ? 'text-income' : 'text-expense'
-                      )}
-                    >
-                      {transaction.type === 'income' ? '+' : '-'}
-                      {formatCurrency(transaction.amount)}
-                    </TableCell>
-                    <TableCell
-                      className={cn(
-                        'text-right font-medium',
-                        (balances.get(transaction.id) || 0) >= 0
-                          ? 'text-income'
-                          : 'text-expense'
-                      )}
-                    >
-                      {formatCurrency(balances.get(transaction.id) || 0)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          onClick={() => onEdit(transaction)}
                         >
-                          <Pencil className="h-4 w-4" />
-                          <span className="sr-only">Editar</span>
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => setDeleteId(transaction.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          <span className="sr-only">Excluir</span>
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                          <span
+                            className={cn(
+                              "h-1.5 w-1.5 rounded-full",
+                              transaction.type === "income"
+                                ? "bg-income"
+                                : "bg-expense",
+                            )}
+                          />
+                          {transaction.type === "income" ? "Entrada" : "Saída"}
+                        </span>
+                      </TableCell>
+                      <TableCell className="max-w-[200px] truncate">
+                        {transaction.description}
+                      </TableCell>
+                      <TableCell
+                        className={cn(
+                          "text-right font-medium",
+                          transaction.type === "income"
+                            ? "text-income"
+                            : "text-expense",
+                        )}
+                      >
+                        {transaction.type === "income" ? "+" : "-"}
+                        {formatCurrency(transaction.amount)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {creditsDelta === 0 ? (
+                          <span className="text-muted-foreground">—</span>
+                        ) : (
+                          <div
+                            className={cn(
+                              "font-semibold tabular-nums",
+                              getCreditTextColor(creditsDelta),
+                            )}
+                          >
+                            {formatCreditsDelta(creditsDelta)}
+                            {serverName && (
+                              <div className="mt-0.5 text-xs font-normal text-muted-foreground">
+                                {serverName}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell
+                        className={cn(
+                          "text-right font-medium",
+                          (balances.get(transaction.id) || 0) >= 0
+                            ? "text-income"
+                            : "text-expense",
+                        )}
+                      >
+                        {formatCurrency(balances.get(transaction.id) || 0)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => onEdit(transaction)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                            <span className="sr-only">Editar</span>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => setDeleteId(transaction.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            <span className="sr-only">Excluir</span>
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
@@ -433,8 +567,8 @@ export function TransactionsTable({
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir Transação</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja excluir esta transação? Esta ação não pode ser
-              desfeita.
+              Tem certeza que deseja excluir esta transação? Esta ação não pode
+              ser desfeita.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -449,5 +583,5 @@ export function TransactionsTable({
         </AlertDialogContent>
       </AlertDialog>
     </div>
-  )
+  );
 }

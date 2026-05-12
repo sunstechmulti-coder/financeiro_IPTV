@@ -189,6 +189,16 @@ function getServerCredits(servidor: any) {
 }
 
 function getMovementQuantity(movement: any) {
+  const signedDelta =
+    movement?.creditsDelta ??
+    movement?.credits_delta ??
+    movement?.creditDelta ??
+    movement?.credit_delta
+
+  if (signedDelta !== null && signedDelta !== undefined && signedDelta !== '') {
+    return toNumber(signedDelta)
+  }
+
   return toNumber(
     movement?.quantity ??
       movement?.qty ??
@@ -202,6 +212,16 @@ function getMovementQuantity(movement: any) {
       movement?.creditsAmount ??
       movement?.creditAmount ??
       movement?.credits ??
+      0
+  )
+}
+
+function getSignedCreditDelta(record: any) {
+  return toNumber(
+    record?.creditsDelta ??
+      record?.credits_delta ??
+      record?.creditDelta ??
+      record?.credit_delta ??
       0
   )
 }
@@ -314,6 +334,7 @@ function buildCreditFlowAnalytics(
   }
 
   let monthlyMovementCount = 0
+  let monthlyInMovementCount = 0
   let monthlyOutMovementCount = 0
 
   movements
@@ -346,27 +367,41 @@ function buildCreditFlowAnalytics(
       addServerMovement(serverId, serverName, direction, quantity)
 
       monthlyMovementCount += 1
+      if (direction === 'in') monthlyInMovementCount += 1
       if (direction === 'out') monthlyOutMovementCount += 1
     })
 
-  // Fallback defensivo: se o backend ainda não estiver enviando os consumos em movements,
-  // tenta ler créditos vendidos direto das transações do caixa, sem duplicar quando movements já trouxe saídas.
-  if (monthlyOutMovementCount === 0) {
+  // Fallback defensivo: em alguns fluxos, a movimentação de crédito fica gravada
+  // direto na transação como creditsDelta/credits_delta, sem gerar linha em credit_movements.
+  // Aqui usamos as transações apenas para a direção que ainda não veio em movements,
+  // evitando duplicar quando o backend já registrou o movimento detalhado.
+  const addTransactionCreditFallback = (expectedDirection: 'in' | 'out') => {
     transactions
-      .filter((transaction: any) => transaction?.type === 'income' && isRecordInMonth(transaction, month, year))
+      .filter((transaction: any) => isRecordInMonth(transaction, month, year))
       .forEach((transaction: any) => {
-        const quantity = Math.abs(getMovementQuantity(transaction))
+        const signedDelta = getSignedCreditDelta(transaction)
         const day = getRecordDay(transaction)
 
-        if (quantity <= 0 || !day) return
+        if (signedDelta === 0 || !day) return
 
+        const direction: 'in' | 'out' = signedDelta > 0 ? 'in' : 'out'
+        if (direction !== expectedDirection) return
+
+        const quantity = Math.abs(signedDelta)
         const daily = dailyMap.get(day)
-        if (daily) daily.saidas += quantity
 
-        addServerMovement(getMovementServerId(transaction), '', 'out', quantity)
+        if (daily) {
+          if (direction === 'in') daily.entradas += quantity
+          if (direction === 'out') daily.saidas += quantity
+        }
+
+        addServerMovement(getMovementServerId(transaction), '', direction, quantity)
         monthlyMovementCount += 1
       })
   }
+
+  if (monthlyInMovementCount === 0) addTransactionCreditFallback('in')
+  if (monthlyOutMovementCount === 0) addTransactionCreditFallback('out')
 
   const dailyRows = Array.from(dailyMap.entries()).map(([day, values]) => ({
     day: String(day).padStart(2, '0'),
@@ -494,12 +529,12 @@ function CreditFlowSummary({
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.35} />
                   <XAxis
                     dataKey="day"
-                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                    tick={{ fill: '#94a3b8', fontSize: 11 }}
                     tickLine={false}
                     axisLine={false}
                   />
                   <YAxis
-                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                    tick={{ fill: '#94a3b8', fontSize: 11 }}
                     tickLine={false}
                     axisLine={false}
                     tickFormatter={(value) => formatCredits(Number(value))}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, FileText } from 'lucide-react'
 import {
   Bar,
@@ -444,6 +444,43 @@ function buildCreditFlowAnalytics(
   }
 }
 
+
+
+function useIsMobileLayout() {
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const mediaQuery = window.matchMedia('(max-width: 640px)')
+    const update = () => setIsMobile(mediaQuery.matches)
+
+    update()
+    mediaQuery.addEventListener('change', update)
+
+    return () => mediaQuery.removeEventListener('change', update)
+  }, [])
+
+  return isMobile
+}
+
+function CustomCreditTooltip({ active, payload, label }: any) {
+  if (!active || !payload || payload.length === 0) return null
+
+  const entradas = Number(payload.find((item: any) => item?.dataKey === 'entradas')?.value ?? 0)
+  const saidas = Number(payload.find((item: any) => item?.dataKey === 'saidas')?.value ?? 0)
+
+  return (
+    <div className="max-w-[240px] rounded-xl border border-border/80 bg-background/95 px-3 py-2.5 shadow-2xl backdrop-blur-sm sm:px-4 sm:py-3">
+      <p className="mb-2 text-sm font-semibold text-foreground">Dia {label}</p>
+      <div className="space-y-1 text-sm">
+        <p className="font-medium text-emerald-500">Entradas: {formatCredits(entradas)} créditos</p>
+        <p className="font-medium text-rose-500">Saídas: {formatCredits(saidas)} créditos</p>
+      </div>
+    </div>
+  )
+}
+
 function CreditFlowSummary({
   transactions,
   servidores,
@@ -455,6 +492,8 @@ function CreditFlowSummary({
     () => buildCreditFlowAnalytics(movements, servidores, transactions, month, year),
     [movements, servidores, transactions, month, year]
   )
+  const isMobile = useIsMobileLayout()
+  const chartRows = isMobile && data.activeDailyRows.length > 0 ? data.activeDailyRows : data.dailyRows
 
   const cardBaseClass = 'rounded-2xl border bg-card/40 p-4 shadow-sm'
   const topServers = data.activeServerRows.slice(0, 6)
@@ -463,7 +502,7 @@ function CreditFlowSummary({
   )
 
   return (
-    <section className="rounded-2xl border border-cyan-500/20 bg-card/40 p-5 shadow-sm">
+    <section className="rounded-2xl border border-cyan-500/20 bg-card/40 p-4 shadow-sm sm:p-5">
       <div className="mb-5 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h3 className="text-base font-semibold">Fluxo de Créditos do Mês</h3>
@@ -497,7 +536,7 @@ function CreditFlowSummary({
         </div>
 
         <div className={`${cardBaseClass} ${data.saldoLiquido >= 0 ? 'border-emerald-500/25' : 'border-rose-500/25'}`}>
-          <p className="text-xs text-muted-foreground">Saldo líquido do mês</p>
+          <p className="text-xs text-muted-foreground">Variação do mês</p>
           <p className={`mt-2 text-2xl font-bold ${data.saldoLiquido >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
             {data.saldoLiquido >= 0 ? '+' : '-'}{formatCredits(Math.abs(data.saldoLiquido))}
           </p>
@@ -514,7 +553,7 @@ function CreditFlowSummary({
       </div>
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.35fr_1fr]">
-        <div className="rounded-2xl border border-border/70 bg-background/30 p-4">
+        <div className="overflow-hidden rounded-2xl border border-border/70 bg-background/30 p-3 sm:p-4">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
               <h4 className="text-sm font-medium">Entradas x Saídas por dia</h4>
@@ -525,18 +564,24 @@ function CreditFlowSummary({
           <div className="h-[260px]">
             {data.hasMonthlyMovements ? (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={data.dailyRows} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                <BarChart
+                  data={chartRows}
+                  margin={{ top: 8, right: isMobile ? 4 : 12, left: isMobile ? -18 : 0, bottom: 0 }}
+                  barCategoryGap={isMobile ? 8 : '10%'}
+                >
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.35} />
                   <XAxis
                     dataKey="day"
-                    tick={{ fill: '#94a3b8', fontSize: 11 }}
+                    tick={{ fill: '#94a3b8', fontSize: isMobile ? 10 : 11 }}
                     tickLine={false}
                     axisLine={false}
+                    interval={isMobile ? 0 : 'preserveStartEnd'}
                   />
                   <YAxis
-                    tick={{ fill: '#94a3b8', fontSize: 11 }}
+                    tick={{ fill: '#94a3b8', fontSize: isMobile ? 10 : 11 }}
                     tickLine={false}
                     axisLine={false}
+                    width={isMobile ? 34 : 40}
                     tickFormatter={(value) => formatCredits(Number(value))}
                   />
                   <Tooltip
@@ -572,7 +617,7 @@ function CreditFlowSummary({
             <p className="text-xs text-muted-foreground">Compras, consumo e saldo atual</p>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="hidden overflow-x-auto sm:block">
             <div className="min-w-[520px]">
               <div className="grid grid-cols-[1.2fr_0.8fr_0.8fr_0.8fr] gap-3 border-b border-border/70 pb-2 text-xs font-medium text-muted-foreground">
                 <span>Servidor</span>
@@ -604,6 +649,42 @@ function CreditFlowSummary({
                 </div>
               )}
             </div>
+          </div>
+
+          <div className="space-y-2 sm:hidden">
+            {topServers.length > 0 ? (
+              topServers.map((server) => (
+                <div key={server.id} className="rounded-xl border border-border/50 bg-card/30 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold">{server.nome}</p>
+                      {server.saldoAtual > 0 && server.saldoAtual <= CREDIT_WARNING_LIMIT && (
+                        <p className="text-xs text-amber-500">Saldo baixo</p>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[11px] text-muted-foreground">Saldo</p>
+                      <p className="text-sm font-semibold tabular-nums">{formatCredits(server.saldoAtual)}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-lg bg-emerald-500/10 px-2 py-2">
+                      <p className="text-muted-foreground">Entraram</p>
+                      <p className="mt-0.5 font-semibold tabular-nums text-emerald-500">+{formatCredits(server.entradas)}</p>
+                    </div>
+                    <div className="rounded-lg bg-rose-500/10 px-2 py-2">
+                      <p className="text-muted-foreground">Saíram</p>
+                      <p className="mt-0.5 font-semibold tabular-nums text-rose-500">-{formatCredits(server.saidas)}</p>
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="py-8 text-center text-sm text-muted-foreground">
+                Nenhum servidor com créditos para exibir.
+              </div>
+            )}
           </div>
         </div>
       </div>

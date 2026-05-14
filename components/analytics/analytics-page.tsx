@@ -71,6 +71,82 @@ interface CreditFlowAnalytics {
   hasMonthlyMovements: boolean
 }
 
+interface SalesMixSummaryProps {
+  transactions: Transaction[]
+  servidores: Servidor[]
+  planos: PlanoEntrada[]
+  month: number
+  year: number
+}
+
+type SalesKindKey = 'renewal' | 'new_client' | 'reseller' | 'other'
+type SalesCycleKey = 'monthly' | 'bimonthly' | 'quarterly' | 'semiannual' | 'annual' | 'other'
+
+interface SalesMixRow {
+  key: string
+  product: string
+  kindKey: SalesKindKey
+  kindLabel: string
+  cycleKey: SalesCycleKey
+  cycleLabel: string
+  serverId: string
+  serverName: string
+  unitPrice: number
+  count: number
+  revenue: number
+  credits: number
+  cost: number
+  profit: number
+  margin: number
+}
+
+interface SalesMixBreakdownRow {
+  key: string
+  label: string
+  count: number
+  revenue: number
+  credits: number
+}
+
+type SalesMixGroupBy = 'product' | 'server' | 'kind' | 'cycle'
+type SalesMixKindFilter = 'all' | SalesKindKey
+type SalesMixCycleFilter = 'all' | SalesCycleKey
+
+interface SalesMixViewRow {
+  key: string
+  label: string
+  subtitle: string
+  count: number
+  revenue: number
+  credits: number
+  cost: number
+  profit: number
+  margin: number
+  averageTicket: number
+  variationCount: number
+}
+
+interface SalesMixAnalytics {
+  rows: SalesMixRow[]
+  typeRows: SalesMixBreakdownRow[]
+  cycleRows: SalesMixBreakdownRow[]
+  totalSales: number
+  totalRevenue: number
+  totalCredits: number
+  totalCost: number
+  totalProfit: number
+  renewalCount: number
+  newClientCount: number
+  resellerCount: number
+  otherCount: number
+  monthlyCount: number
+  quarterlyCount: number
+  semiannualCount: number
+  annualCount: number
+  hasSales: boolean
+}
+
+
 const MONTH_NAMES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
@@ -444,6 +520,508 @@ function buildCreditFlowAnalytics(
   }
 }
 
+function getRecordDescription(record: any) {
+  return String(record?.description ?? record?.descricao ?? record?.name ?? record?.nome ?? '')
+}
+
+function getRecordAmount(record: any) {
+  return toNumber(record?.amount ?? record?.valor ?? record?.value ?? record?.total ?? 0)
+}
+
+function getServerUnitCost(servidor: any) {
+  return toNumber(
+    servidor?.unit_cost ??
+      servidor?.unitCost ??
+      servidor?.custo_unitario ??
+      servidor?.custoUnitario ??
+      servidor?.credit_cost ??
+      servidor?.creditCost ??
+      servidor?.cost ??
+      0
+  )
+}
+
+function getPlanId(plan: any) {
+  const value = plan?.id ?? plan?.plan_id ?? plan?.planId ?? plan?.codigo ?? plan?.code
+  return value ? String(value) : ''
+}
+
+function getPlanLabel(plan: any) {
+  return String(
+    plan?.descricao ??
+      plan?.description ??
+      plan?.nome ??
+      plan?.name ??
+      plan?.label ??
+      plan?.codigo ??
+      plan?.code ??
+      ''
+  ).trim()
+}
+
+function getPlanServerId(plan: any) {
+  const value =
+    plan?.server_id ??
+    plan?.serverId ??
+    plan?.servidor_id ??
+    plan?.servidorId ??
+    plan?.server?.id ??
+    plan?.servidor?.id
+
+  return value ? String(value) : ''
+}
+
+function getTransactionPlanId(record: any) {
+  const value =
+    record?.plan_id ??
+    record?.planId ??
+    record?.plano_id ??
+    record?.planoId ??
+    record?.template_id ??
+    record?.templateId ??
+    record?.cash_template_id ??
+    record?.cashTemplateId
+
+  return value ? String(value) : ''
+}
+
+function findMatchingPlan(record: any, planos: PlanoEntrada[]) {
+  const transactionPlanId = getTransactionPlanId(record)
+
+  if (transactionPlanId) {
+    const byId = planos.find((plan: any) => getPlanId(plan) === transactionPlanId)
+    if (byId) return byId
+  }
+
+  const description = normalizeText(getRecordDescription(record))
+
+  if (!description) return null
+
+  return planos.find((plan: any) => {
+    const codigo = normalizeText(plan?.codigo ?? plan?.code ?? '')
+    const descricao = normalizeText(getPlanLabel(plan))
+
+    return (
+      (codigo.length > 1 && description.includes(codigo)) ||
+      (descricao.length > 2 && description.includes(descricao))
+    )
+  }) ?? null
+}
+
+function detectSaleKind(record: any, plan: PlanoEntrada | null): { key: SalesKindKey; label: string } {
+  const raw = normalizeText([
+    getRecordDescription(record),
+    (plan as any)?.tipo,
+    (plan as any)?.type,
+    (plan as any)?.category,
+    (plan as any)?.categoria,
+    getPlanLabel(plan),
+  ].filter(Boolean).join(' '))
+
+  if (
+    raw.includes('revenda') ||
+    raw.includes('revendedor') ||
+    raw.includes('reseller')
+  ) {
+    return { key: 'reseller', label: 'Revendedor' }
+  }
+
+  if (
+    raw.includes('cliente novo') ||
+    raw.includes('novo cliente') ||
+    raw.includes('cliente-novo') ||
+    raw.includes('new client') ||
+    raw.includes('nova venda') ||
+    raw.includes('venda nova')
+  ) {
+    return { key: 'new_client', label: 'Cliente novo' }
+  }
+
+  if (
+    raw.includes('renovacao') ||
+    raw.includes('renovar') ||
+    raw.includes('renov')
+  ) {
+    return { key: 'renewal', label: 'Renovação' }
+  }
+
+  return { key: 'other', label: 'Outras vendas' }
+}
+
+function detectSaleCycle(record: any, plan: PlanoEntrada | null): { key: SalesCycleKey; label: string; rank: number } {
+  const raw = normalizeText([
+    getRecordDescription(record),
+    (plan as any)?.period,
+    (plan as any)?.periodo,
+    (plan as any)?.periodicidade,
+    (plan as any)?.cycle,
+    (plan as any)?.ciclo,
+    (plan as any)?.duration,
+    (plan as any)?.duracao,
+    getPlanLabel(plan),
+  ].filter(Boolean).join(' '))
+
+  if (
+    raw.includes('anual') ||
+    raw.includes('12 meses') ||
+    raw.includes('12 mes') ||
+    raw.includes('12m') ||
+    raw.includes('1 ano') ||
+    raw.includes('365 dias')
+  ) {
+    return { key: 'annual', label: 'Anual', rank: 5 }
+  }
+
+  if (
+    raw.includes('semestral') ||
+    raw.includes('6 meses') ||
+    raw.includes('6 mes') ||
+    raw.includes('6m') ||
+    raw.includes('180 dias')
+  ) {
+    return { key: 'semiannual', label: 'Semestral', rank: 4 }
+  }
+
+  if (
+    raw.includes('trimestral') ||
+    raw.includes('3 meses') ||
+    raw.includes('3 mes') ||
+    raw.includes('3m') ||
+    raw.includes('90 dias')
+  ) {
+    return { key: 'quarterly', label: 'Trimestral', rank: 3 }
+  }
+
+  if (
+    raw.includes('bimestral') ||
+    raw.includes('2 meses') ||
+    raw.includes('2 mes') ||
+    raw.includes('2m') ||
+    raw.includes('60 dias')
+  ) {
+    return { key: 'bimonthly', label: 'Bimestral', rank: 2 }
+  }
+
+  if (
+    raw.includes('mensal') ||
+    raw.includes('1 mes') ||
+    raw.includes('1m') ||
+    raw.includes('30 dias')
+  ) {
+    return { key: 'monthly', label: 'Mensal', rank: 1 }
+  }
+
+  return { key: 'other', label: 'Não informado', rank: 99 }
+}
+
+function resolveSaleServer(record: any, plan: PlanoEntrada | null, servidores: Servidor[]) {
+  const recordServerId = getMovementServerId(record)
+  const planServerId = getPlanServerId(plan)
+  const directServerId = recordServerId || planServerId
+
+  if (directServerId) {
+    const server = servidores.find((servidor) => getServidorId(servidor) === directServerId)
+
+    if (server) {
+      return {
+        id: getServidorId(server),
+        name: getServerName(server),
+        unitCost: getServerUnitCost(server),
+      }
+    }
+  }
+
+  const directName = String(
+    record?.server_name ??
+      record?.serverName ??
+      record?.servidor_nome ??
+      record?.servidorNome ??
+      record?.server?.name ??
+      record?.servidor?.nome ??
+      (plan as any)?.server_name ??
+      (plan as any)?.serverName ??
+      (plan as any)?.servidor_nome ??
+      (plan as any)?.servidorNome ??
+      ''
+  ).trim()
+
+  if (directName) {
+    const server = servidores.find((servidor) => normalizeText(getServerName(servidor)) === normalizeText(directName))
+
+    if (server) {
+      return {
+        id: getServidorId(server),
+        name: getServerName(server),
+        unitCost: getServerUnitCost(server),
+      }
+    }
+
+    return {
+      id: normalizeText(directName) || 'sem-servidor',
+      name: directName,
+      unitCost: 0,
+    }
+  }
+
+  const description = normalizeText(getRecordDescription(record))
+  const serverByDescription = servidores.find((servidor) => {
+    const name = normalizeText(getServerName(servidor))
+    return name.length > 1 && description.includes(name)
+  })
+
+  if (serverByDescription) {
+    return {
+      id: getServidorId(serverByDescription),
+      name: getServerName(serverByDescription),
+      unitCost: getServerUnitCost(serverByDescription),
+    }
+  }
+
+  return {
+    id: 'sem-servidor',
+    name: 'Sem servidor',
+    unitCost: 0,
+  }
+}
+
+function getSaleCreditsQuantity(record: any, plan: PlanoEntrada | null) {
+  const direct = toNumber(
+    record?.credits_qty ??
+      record?.creditsQty ??
+      record?.credit_qty ??
+      record?.creditQty ??
+      record?.credits_sold ??
+      record?.creditsSold ??
+      record?.creditos ??
+      record?.creditos_qtd ??
+      record?.quantity_credits ??
+      record?.quantityCredits ??
+      0
+  )
+
+  if (direct > 0) return direct
+
+  const signedDelta = getSignedCreditDelta(record)
+  if (signedDelta !== 0) return Math.abs(signedDelta)
+
+  const planQuantity = toNumber(
+    (plan as any)?.credits_qty ??
+      (plan as any)?.creditsQty ??
+      (plan as any)?.credit_qty ??
+      (plan as any)?.creditQty ??
+      (plan as any)?.creditos ??
+      (plan as any)?.quantity_credits ??
+      (plan as any)?.quantityCredits ??
+      0
+  )
+
+  return planQuantity > 0 ? planQuantity : 0
+}
+
+function getSaleCost(record: any, creditsQuantity: number, serverUnitCost: number) {
+  const directCost = toNumber(
+    record?.cost ??
+      record?.custo ??
+      record?.credit_cost ??
+      record?.creditCost ??
+      record?.credits_cost ??
+      record?.creditsCost ??
+      record?.total_cost ??
+      record?.totalCost ??
+      0
+  )
+
+  if (directCost > 0) return directCost
+
+  return creditsQuantity > 0 && serverUnitCost > 0 ? creditsQuantity * serverUnitCost : 0
+}
+
+function buildSaleProductName(
+  record: any,
+  plan: PlanoEntrada | null,
+  kindLabel: string,
+  cycleLabel: string,
+  cycleKey: SalesCycleKey,
+  serverName: string
+) {
+  const planLabel = getPlanLabel(plan)
+
+  if (planLabel) return planLabel
+
+  const pieces = [
+    kindLabel !== 'Outras vendas' ? kindLabel : '',
+    cycleKey !== 'other' ? cycleLabel : '',
+    serverName !== 'Sem servidor' ? serverName : '',
+  ].filter(Boolean)
+
+  if (pieces.length > 0) return pieces.join(' ')
+
+  return getRecordDescription(record) || 'Venda'
+}
+
+function buildSalesMixAnalytics(
+  transactions: Transaction[],
+  servidores: Servidor[],
+  planos: PlanoEntrada[],
+  month: number,
+  year: number
+): SalesMixAnalytics {
+  const map = new Map<string, SalesMixRow>()
+  const typeMap = new Map<string, SalesMixBreakdownRow>()
+  const cycleMap = new Map<string, SalesMixBreakdownRow>()
+
+  const summary = {
+    totalSales: 0,
+    totalRevenue: 0,
+    totalCredits: 0,
+    totalCost: 0,
+    totalProfit: 0,
+    renewalCount: 0,
+    newClientCount: 0,
+    resellerCount: 0,
+    otherCount: 0,
+    monthlyCount: 0,
+    quarterlyCount: 0,
+    semiannualCount: 0,
+    annualCount: 0,
+  }
+
+  const addBreakdown = (
+    targetMap: Map<string, SalesMixBreakdownRow>,
+    key: string,
+    label: string,
+    amount: number,
+    credits: number
+  ) => {
+    const current = targetMap.get(key) ?? {
+      key,
+      label,
+      count: 0,
+      revenue: 0,
+      credits: 0,
+    }
+
+    current.count += 1
+    current.revenue += amount
+    current.credits += credits
+
+    targetMap.set(key, current)
+  }
+
+  transactions
+    .filter((transaction: any) => transaction?.type === 'income' && isRecordInMonth(transaction, month, year))
+    .forEach((transaction: any) => {
+      const amount = getRecordAmount(transaction)
+      if (amount <= 0) return
+
+      const plan = findMatchingPlan(transaction, planos)
+      const kind = detectSaleKind(transaction, plan)
+      const cycle = detectSaleCycle(transaction, plan)
+      const server = resolveSaleServer(transaction, plan, servidores)
+      const credits = getSaleCreditsQuantity(transaction, plan)
+      const cost = getSaleCost(transaction, credits, server.unitCost)
+      const profit = amount - cost
+      const product = buildSaleProductName(transaction, plan, kind.label, cycle.label, cycle.key, server.name)
+      const unitPrice = Number(amount.toFixed(2))
+      const productKey = normalizeText(product) || normalizeText(getRecordDescription(transaction)) || 'venda'
+
+      const key = [
+        kind.key,
+        cycle.key,
+        normalizeText(server.id || server.name || 'sem-servidor'),
+        unitPrice.toFixed(2),
+        productKey,
+      ].join('|')
+
+      const current = map.get(key) ?? {
+        key,
+        product,
+        kindKey: kind.key,
+        kindLabel: kind.label,
+        cycleKey: cycle.key,
+        cycleLabel: cycle.label,
+        serverId: server.id,
+        serverName: server.name,
+        unitPrice,
+        count: 0,
+        revenue: 0,
+        credits: 0,
+        cost: 0,
+        profit: 0,
+        margin: 0,
+      }
+
+      current.count += 1
+      current.revenue += amount
+      current.credits += credits
+      current.cost += cost
+      current.profit += profit
+      current.margin = current.revenue > 0 ? (current.profit / current.revenue) * 100 : 0
+
+      map.set(key, current)
+
+      summary.totalSales += 1
+      summary.totalRevenue += amount
+      summary.totalCredits += credits
+      summary.totalCost += cost
+      summary.totalProfit += profit
+
+      if (kind.key === 'renewal') summary.renewalCount += 1
+      if (kind.key === 'new_client') summary.newClientCount += 1
+      if (kind.key === 'reseller') summary.resellerCount += 1
+      if (kind.key === 'other') summary.otherCount += 1
+
+      if (cycle.key === 'monthly') summary.monthlyCount += 1
+      if (cycle.key === 'quarterly') summary.quarterlyCount += 1
+      if (cycle.key === 'semiannual') summary.semiannualCount += 1
+      if (cycle.key === 'annual') summary.annualCount += 1
+
+      addBreakdown(typeMap, kind.key, kind.label, amount, credits)
+      addBreakdown(cycleMap, cycle.key, cycle.label, amount, credits)
+    })
+
+  const rows = Array.from(map.values()).sort((a, b) => {
+    const countDiff = b.count - a.count
+    if (countDiff !== 0) return countDiff
+
+    const revenueDiff = b.revenue - a.revenue
+    if (revenueDiff !== 0) return revenueDiff
+
+    return a.product.localeCompare(b.product, 'pt-BR')
+  })
+
+  const cycleOrder: Record<SalesCycleKey, number> = {
+    monthly: 1,
+    bimonthly: 2,
+    quarterly: 3,
+    semiannual: 4,
+    annual: 5,
+    other: 99,
+  }
+
+  const typeOrder: Record<SalesKindKey, number> = {
+    renewal: 1,
+    new_client: 2,
+    reseller: 3,
+    other: 99,
+  }
+
+  const typeRows = Array.from(typeMap.values()).sort((a, b) => {
+    return (typeOrder[a.key as SalesKindKey] ?? 99) - (typeOrder[b.key as SalesKindKey] ?? 99)
+  })
+
+  const cycleRows = Array.from(cycleMap.values()).sort((a, b) => {
+    return (cycleOrder[a.key as SalesCycleKey] ?? 99) - (cycleOrder[b.key as SalesCycleKey] ?? 99)
+  })
+
+  return {
+    rows,
+    typeRows,
+    cycleRows,
+    ...summary,
+    hasSales: summary.totalSales > 0,
+  }
+}
 
 
 function useIsMobileLayout() {
@@ -684,6 +1262,540 @@ function CreditFlowSummary({
   )
 }
 
+function aggregateSalesMixRows(rows: SalesMixRow[], groupBy: SalesMixGroupBy): SalesMixViewRow[] {
+  if (groupBy === 'product') {
+    return rows
+      .map((row) => ({
+        key: row.key,
+        label: row.product,
+        subtitle: `${row.kindLabel} • ${row.cycleLabel} • ${row.serverName} • ${formatCurrency(row.unitPrice)}`,
+        count: row.count,
+        revenue: row.revenue,
+        credits: row.credits,
+        cost: row.cost,
+        profit: row.profit,
+        margin: row.margin,
+        averageTicket: row.count > 0 ? row.revenue / row.count : 0,
+        variationCount: 1,
+      }))
+      .sort((a, b) => {
+        const countDiff = b.count - a.count
+        if (countDiff !== 0) return countDiff
+        return b.revenue - a.revenue
+      })
+  }
+
+  const map = new Map<string, SalesMixViewRow>()
+
+  rows.forEach((row) => {
+    const groupKey =
+      groupBy === 'server'
+        ? `server:${normalizeText(row.serverId || row.serverName || 'sem-servidor')}`
+        : groupBy === 'kind'
+          ? `kind:${row.kindKey}`
+          : `cycle:${row.cycleKey}`
+
+    const label =
+      groupBy === 'server'
+        ? row.serverName
+        : groupBy === 'kind'
+          ? row.kindLabel
+          : row.cycleLabel
+
+    const current = map.get(groupKey) ?? {
+      key: groupKey,
+      label,
+      subtitle: '',
+      count: 0,
+      revenue: 0,
+      credits: 0,
+      cost: 0,
+      profit: 0,
+      margin: 0,
+      averageTicket: 0,
+      variationCount: 0,
+    }
+
+    current.count += row.count
+    current.revenue += row.revenue
+    current.credits += row.credits
+    current.cost += row.cost
+    current.profit += row.profit
+    current.margin = current.revenue > 0 ? (current.profit / current.revenue) * 100 : 0
+    current.averageTicket = current.count > 0 ? current.revenue / current.count : 0
+    current.variationCount += 1
+
+    map.set(groupKey, current)
+  })
+
+  return Array.from(map.values())
+    .map((row) => ({
+      ...row,
+      subtitle:
+        groupBy === 'server'
+          ? `${row.variationCount} variação${row.variationCount === 1 ? '' : 'ões'} de produto/preço nesse servidor`
+          : groupBy === 'kind'
+            ? `${row.variationCount} variação${row.variationCount === 1 ? '' : 'ões'} dentro deste tipo`
+            : `${row.variationCount} variação${row.variationCount === 1 ? '' : 'ões'} dentro deste período`,
+    }))
+    .sort((a, b) => {
+      const countDiff = b.count - a.count
+      if (countDiff !== 0) return countDiff
+      return b.revenue - a.revenue
+    })
+}
+
+function SalesMixBreakdownList({ title, rows }: { title: string; rows: SalesMixBreakdownRow[] }) {
+  return (
+    <div className="rounded-2xl border border-border/70 bg-background/30 p-3 sm:p-4">
+      <div className="mb-3">
+        <h4 className="text-sm font-medium">{title}</h4>
+        <p className="text-xs text-muted-foreground">Quantidade, receita total, ticket médio e créditos consumidos</p>
+      </div>
+
+      {rows.length > 0 ? (
+        <>
+          <div className="hidden md:block">
+            <div className="grid grid-cols-[minmax(0,1.4fr)_0.45fr_0.8fr_0.8fr_0.7fr] gap-3 border-b border-border/70 pb-2 text-xs font-medium text-muted-foreground">
+              <span>Categoria</span>
+              <span className="text-right">Qtd.</span>
+              <span className="text-right">Receita</span>
+              <span className="text-right">Média</span>
+              <span className="text-right">Créditos</span>
+            </div>
+
+            {rows.map((row) => {
+              const averageRevenue = row.count > 0 ? row.revenue / row.count : 0
+
+              return (
+                <div
+                  key={row.key}
+                  className="grid grid-cols-[minmax(0,1.4fr)_0.45fr_0.8fr_0.8fr_0.7fr] gap-3 border-b border-border/40 py-3 text-sm last:border-0"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold">{row.label}</p>
+                    <p className="text-xs text-muted-foreground">Resumo consolidado</p>
+                  </div>
+                  <span className="self-center text-right font-bold tabular-nums text-sky-500">{row.count}</span>
+                  <span className="self-center text-right tabular-nums text-emerald-500">{formatCurrency(row.revenue)}</span>
+                  <span className="self-center text-right tabular-nums">{formatCurrency(averageRevenue)}</span>
+                  <span className="self-center text-right tabular-nums text-cyan-500">{formatCredits(row.credits)}</span>
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="space-y-3 md:hidden">
+            {rows.map((row) => {
+              const averageRevenue = row.count > 0 ? row.revenue / row.count : 0
+
+              return (
+                <div key={row.key} className="rounded-xl border border-border/50 bg-card/30 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold leading-tight">{row.label}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">Receita total {formatCurrency(row.revenue)}</p>
+                    </div>
+
+                    <div className="shrink-0 text-right">
+                      <p className="text-[11px] text-muted-foreground">Qtd.</p>
+                      <p className="text-xl font-bold tabular-nums text-sky-500">{row.count}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-lg bg-emerald-500/10 px-2 py-2">
+                      <p className="text-muted-foreground">Receita</p>
+                      <p className="mt-0.5 font-semibold tabular-nums text-emerald-500">{formatCurrency(row.revenue)}</p>
+                    </div>
+                    <div className="rounded-lg bg-sky-500/10 px-2 py-2">
+                      <p className="text-muted-foreground">Média</p>
+                      <p className="mt-0.5 font-semibold tabular-nums text-sky-500">{formatCurrency(averageRevenue)}</p>
+                    </div>
+                    <div className="rounded-lg bg-cyan-500/10 px-2 py-2 col-span-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-muted-foreground">Créditos consumidos</p>
+                        <p className="font-semibold tabular-nums text-cyan-500">{formatCredits(row.credits)}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </>
+      ) : (
+        <div className="rounded-xl border border-dashed border-border/70 py-8 text-center text-sm text-muted-foreground">
+          Nenhuma venda para exibir.
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SalesMixSummary({
+  transactions,
+  servidores,
+  planos,
+  month,
+  year,
+}: SalesMixSummaryProps) {
+  const data = useMemo(
+    () => buildSalesMixAnalytics(transactions, servidores, planos, month, year),
+    [transactions, servidores, planos, month, year]
+  )
+
+  const [groupBy, setGroupBy] = useState<SalesMixGroupBy>('product')
+  const [kindFilter, setKindFilter] = useState<SalesMixKindFilter>('all')
+  const [cycleFilter, setCycleFilter] = useState<SalesMixCycleFilter>('all')
+  const [showAllRows, setShowAllRows] = useState(false)
+
+  useEffect(() => {
+    setShowAllRows(false)
+  }, [groupBy, kindFilter, cycleFilter, month, year])
+
+  const filteredRows = useMemo(() => {
+    return data.rows.filter((row) => {
+      const matchesKind = kindFilter === 'all' || row.kindKey === kindFilter
+      const matchesCycle = cycleFilter === 'all' || row.cycleKey === cycleFilter
+      return matchesKind && matchesCycle
+    })
+  }, [data.rows, kindFilter, cycleFilter])
+
+  const viewRows = useMemo(
+    () => aggregateSalesMixRows(filteredRows, groupBy),
+    [filteredRows, groupBy]
+  )
+
+  const visibleRows = showAllRows ? viewRows : viewRows.slice(0, 10)
+  const hiddenRowsCount = Math.max(viewRows.length - visibleRows.length, 0)
+
+  const cardBaseClass = 'rounded-2xl border bg-card/40 p-3 shadow-sm sm:p-4'
+  const summaryCards = [
+    {
+      label: 'Total de vendas',
+      value: data.totalSales,
+      helper: formatCurrency(data.totalRevenue),
+      className: 'border-sky-500/25',
+      valueClassName: 'text-sky-500',
+    },
+    {
+      label: 'Renovações',
+      value: data.renewalCount,
+      helper: 'Vendas de clientes ativos',
+      className: 'border-emerald-500/25',
+      valueClassName: 'text-emerald-500',
+    },
+    {
+      label: 'Clientes novos',
+      value: data.newClientCount,
+      helper: 'Entradas novas no mês',
+      className: 'border-cyan-500/25',
+      valueClassName: 'text-cyan-500',
+    },
+    {
+      label: 'Mensal',
+      value: data.monthlyCount,
+      helper: 'Planos de 1 mês',
+      className: 'border-emerald-500/25',
+      valueClassName: 'text-emerald-500',
+    },
+    {
+      label: 'Trimestral',
+      value: data.quarterlyCount,
+      helper: 'Planos de 3 meses',
+      className: 'border-amber-500/25',
+      valueClassName: 'text-amber-500',
+    },
+    {
+      label: 'Semestral',
+      value: data.semiannualCount,
+      helper: 'Planos de 6 meses',
+      className: 'border-orange-500/25',
+      valueClassName: 'text-orange-500',
+    },
+    {
+      label: 'Anual',
+      value: data.annualCount,
+      helper: 'Planos de 12 meses',
+      className: 'border-fuchsia-500/25',
+      valueClassName: 'text-fuchsia-500',
+    },
+  ]
+
+  const groupOptions: { key: SalesMixGroupBy; label: string }[] = [
+    { key: 'product', label: 'Produto/preço' },
+    { key: 'server', label: 'Servidor' },
+    { key: 'kind', label: 'Tipo' },
+    { key: 'cycle', label: 'Período' },
+  ]
+
+  const kindOptions: { key: SalesMixKindFilter; label: string }[] = [
+    { key: 'all', label: 'Todos' },
+    ...data.typeRows.map((row) => ({
+      key: row.key as SalesKindKey,
+      label: row.label,
+    })),
+  ]
+
+  const cycleOptions: { key: SalesMixCycleFilter; label: string }[] = [
+    { key: 'all', label: 'Todos' },
+    ...data.cycleRows.map((row) => ({
+      key: row.key as SalesCycleKey,
+      label: row.label,
+    })),
+  ]
+
+  const activeGroupLabel = groupOptions.find(option => option.key === groupBy)?.label ?? 'Produto/preço'
+  const filteredTotals = viewRows.reduce(
+    (acc, row) => {
+      acc.count += row.count
+      acc.revenue += row.revenue
+      acc.credits += row.credits
+      acc.profit += row.profit
+      return acc
+    },
+    { count: 0, revenue: 0, credits: 0, profit: 0 }
+  )
+
+  return (
+    <section className="rounded-2xl border border-sky-500/20 bg-card/40 p-4 shadow-sm sm:p-5">
+      <div className="mb-5 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h3 className="text-base font-semibold">Mix de Vendas do Mês</h3>
+          <p className="text-sm text-muted-foreground">
+            Quantidade por tipo, período, servidor e preço vendido no mês selecionado.
+          </p>
+        </div>
+
+        {data.hasSales && (
+          <div className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-500">
+            Lucro estimado: {formatCurrency(data.totalProfit)}
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
+        {summaryCards.map((card) => (
+          <div key={card.label} className={`${cardBaseClass} ${card.className}`}>
+            <p className="text-xs text-muted-foreground">{card.label}</p>
+            <p className={`mt-2 text-2xl font-bold tabular-nums ${card.valueClassName}`}>
+              {card.value.toLocaleString('pt-BR')}
+            </p>
+            <p className="mt-1 min-h-[28px] text-[11px] leading-tight text-muted-foreground sm:text-xs">
+              {card.helper}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-5 rounded-2xl border border-border/70 bg-background/30 p-3 sm:p-4">
+        <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <h4 className="text-sm font-medium">Análise de vendas</h4>
+            <p className="text-xs text-muted-foreground">
+              Visual atual: {activeGroupLabel}. Use os filtros para reduzir a lista sem criar outra tela.
+            </p>
+          </div>
+
+          {data.hasSales && (
+            <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4 xl:min-w-[460px]">
+              <div className="rounded-xl border border-border/50 bg-card/30 px-3 py-2">
+                <p className="text-muted-foreground">Qtd.</p>
+                <p className="font-bold tabular-nums text-sky-500">{filteredTotals.count.toLocaleString('pt-BR')}</p>
+              </div>
+              <div className="rounded-xl border border-border/50 bg-card/30 px-3 py-2">
+                <p className="text-muted-foreground">Receita</p>
+                <p className="font-bold tabular-nums text-emerald-500">{formatCurrency(filteredTotals.revenue)}</p>
+              </div>
+              <div className="rounded-xl border border-border/50 bg-card/30 px-3 py-2">
+                <p className="text-muted-foreground">Créditos</p>
+                <p className="font-bold tabular-nums text-cyan-500">{formatCredits(filteredTotals.credits)}</p>
+              </div>
+              <div className="rounded-xl border border-border/50 bg-card/30 px-3 py-2">
+                <p className="text-muted-foreground">Lucro</p>
+                <p className={`font-bold tabular-nums ${filteredTotals.profit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                  {formatCurrency(filteredTotals.profit)}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="mb-4 space-y-3">
+          <div>
+            <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Agrupar por</p>
+            <div className="flex flex-wrap gap-2">
+              {groupOptions.map((option) => (
+                <Button
+                  key={option.key}
+                  type="button"
+                  variant={groupBy === option.key ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-8 rounded-full px-3 text-xs"
+                  onClick={() => setGroupBy(option.key)}
+                >
+                  {option.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid gap-3 lg:grid-cols-2">
+            <div>
+              <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Tipo</p>
+              <div className="flex flex-wrap gap-2">
+                {kindOptions.map((option) => (
+                  <Button
+                    key={option.key}
+                    type="button"
+                    variant={kindFilter === option.key ? 'default' : 'outline'}
+                    size="sm"
+                    className="h-8 rounded-full px-3 text-xs"
+                    onClick={() => setKindFilter(option.key)}
+                  >
+                    {option.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Período</p>
+              <div className="flex flex-wrap gap-2">
+                {cycleOptions.map((option) => (
+                  <Button
+                    key={option.key}
+                    type="button"
+                    variant={cycleFilter === option.key ? 'default' : 'outline'}
+                    size="sm"
+                    className="h-8 rounded-full px-3 text-xs"
+                    onClick={() => setCycleFilter(option.key)}
+                  >
+                    {option.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {data.hasSales ? (
+          viewRows.length > 0 ? (
+            <>
+              <div className="mb-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                <span>
+                  {viewRows.length} resultado{viewRows.length === 1 ? '' : 's'} encontrado{viewRows.length === 1 ? '' : 's'}
+                </span>
+                {!showAllRows && hiddenRowsCount > 0 && (
+                  <span>Mostrando os 10 principais</span>
+                )}
+              </div>
+
+              <div className="hidden lg:block">
+                <div className="grid grid-cols-[minmax(0,1.6fr)_0.4fr_0.65fr_0.65fr_0.55fr_0.65fr] gap-3 border-b border-border/70 pb-2 text-xs font-medium text-muted-foreground">
+                  <span>Item</span>
+                  <span className="text-right">Qtd.</span>
+                  <span className="text-right">Receita</span>
+                  <span className="text-right">Ticket médio</span>
+                  <span className="text-right">Créditos</span>
+                  <span className="text-right">Lucro est.</span>
+                </div>
+
+                {visibleRows.map((row) => (
+                  <div
+                    key={row.key}
+                    className="grid grid-cols-[minmax(0,1.6fr)_0.4fr_0.65fr_0.65fr_0.55fr_0.65fr] gap-3 border-b border-border/40 py-3 text-sm last:border-0"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold">{row.label}</p>
+                      <p className="truncate text-xs text-muted-foreground">{row.subtitle}</p>
+                    </div>
+                    <span className="self-center text-right font-bold tabular-nums text-sky-500">{row.count}</span>
+                    <span className="self-center text-right tabular-nums text-emerald-500">{formatCurrency(row.revenue)}</span>
+                    <span className="self-center text-right tabular-nums">{formatCurrency(row.averageTicket)}</span>
+                    <span className="self-center text-right tabular-nums text-cyan-500">{formatCredits(row.credits)}</span>
+                    <span className={`self-center text-right tabular-nums ${row.profit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                      {formatCurrency(row.profit)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="space-y-3 lg:hidden">
+                {visibleRows.map((row) => (
+                  <div key={row.key} className="rounded-xl border border-border/50 bg-card/30 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="line-clamp-2 text-sm font-semibold">{row.label}</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">{row.subtitle}</p>
+                      </div>
+
+                      <div className="shrink-0 text-right">
+                        <p className="text-[11px] text-muted-foreground">Qtd.</p>
+                        <p className="text-xl font-bold tabular-nums text-sky-500">{row.count}</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                      <div className="rounded-lg bg-emerald-500/10 px-2 py-2">
+                        <p className="text-muted-foreground">Receita</p>
+                        <p className="mt-0.5 font-semibold tabular-nums text-emerald-500">{formatCurrency(row.revenue)}</p>
+                      </div>
+                      <div className="rounded-lg bg-sky-500/10 px-2 py-2">
+                        <p className="text-muted-foreground">Ticket médio</p>
+                        <p className="mt-0.5 font-semibold tabular-nums text-sky-500">{formatCurrency(row.averageTicket)}</p>
+                      </div>
+                      <div className="rounded-lg bg-cyan-500/10 px-2 py-2">
+                        <p className="text-muted-foreground">Créditos</p>
+                        <p className="mt-0.5 font-semibold tabular-nums text-cyan-500">{formatCredits(row.credits)}</p>
+                      </div>
+                      <div className={`${row.profit >= 0 ? 'bg-emerald-500/10' : 'bg-rose-500/10'} rounded-lg px-2 py-2`}>
+                        <p className="text-muted-foreground">Lucro est.</p>
+                        <p className={`mt-0.5 font-semibold tabular-nums ${row.profit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                          {formatCurrency(row.profit)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {viewRows.length > 10 && (
+                <div className="mt-4 flex justify-center">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="rounded-full"
+                    onClick={() => setShowAllRows((current) => !current)}
+                  >
+                    {showAllRows ? 'Ver menos' : `Ver todos (${viewRows.length})`}
+                  </Button>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="flex min-h-[180px] items-center justify-center rounded-xl border border-dashed border-border/70 px-4 text-center text-sm text-muted-foreground">
+              Nenhuma venda encontrada com os filtros selecionados.
+            </div>
+          )
+        ) : (
+          <div className="flex min-h-[220px] items-center justify-center rounded-xl border border-dashed border-border/70 px-4 text-center text-sm text-muted-foreground">
+            Nenhuma venda encontrada para o mês selecionado.
+          </div>
+        )}
+      </div>
+
+      <div className="mt-5 grid gap-5 lg:grid-cols-2">
+        <SalesMixBreakdownList title="Resumo por tipo" rows={data.typeRows} />
+        <SalesMixBreakdownList title="Resumo por período" rows={data.cycleRows} />
+      </div>
+    </section>
+  )
+}
+
+
 export function AnalyticsPage({ transactions, servidores, movements, planos }: AnalyticsPageProps) {
   const today = new Date()
   const [month, setMonth] = useState(today.getMonth())
@@ -707,6 +1819,7 @@ export function AnalyticsPage({ transactions, servidores, movements, planos }: A
     const daysElapsed = isCurrentMonth ? today.getDate() : daysInMonth
 
     const creditFlow = buildCreditFlowAnalytics(movements, servidores, transactions, month, year)
+    const salesMix = buildSalesMixAnalytics(transactions, servidores, planos, month, year)
 
     const monthTransactions = transactions
       .filter((transaction) => {
@@ -1089,6 +2202,43 @@ export function AnalyticsPage({ transactions, servidores, movements, planos }: A
       { fontSize: 8, headColor: [14, 116, 144] }
     )
 
+    addSectionTitle('Mix de vendas do mês')
+
+    addTable(
+      [['Indicador', 'Valor']],
+      [
+        ['Total de vendas', String(salesMix.totalSales)],
+        ['Renovações', String(salesMix.renewalCount)],
+        ['Clientes novos', String(salesMix.newClientCount)],
+        ['Planos mensais', String(salesMix.monthlyCount)],
+        ['Planos trimestrais', String(salesMix.quarterlyCount)],
+        ['Planos semestrais', String(salesMix.semiannualCount)],
+        ['Planos anuais', String(salesMix.annualCount)],
+        ['Receita agrupada', formatCurrency(salesMix.totalRevenue)],
+        ['Créditos consumidos', formatCredits(salesMix.totalCredits)],
+        ['Lucro estimado', formatCurrency(salesMix.totalProfit)],
+      ],
+      { fontSize: 9, headColor: [2, 132, 199] }
+    )
+
+    addTable(
+      [['Produto', 'Tipo', 'Período', 'Servidor', 'Valor', 'Qtd.', 'Receita', 'Créditos', 'Lucro est.']],
+      salesMix.rows.length > 0
+        ? salesMix.rows.map(item => [
+            item.product,
+            item.kindLabel,
+            item.cycleLabel,
+            item.serverName,
+            formatCurrency(item.unitPrice),
+            String(item.count),
+            formatCurrency(item.revenue),
+            formatCredits(item.credits),
+            formatCurrency(item.profit),
+          ])
+        : [['Nenhuma venda no período', '-', '-', '-', '-', '-', '-', '-', '-']],
+      { fontSize: 7, headColor: [2, 132, 199] }
+    )
+
     addSectionTitle('Créditos atuais por servidor')
 
     addSmallText('Esta seção mostra a posição atual dos créditos no momento da emissão do relatório.')
@@ -1182,6 +2332,15 @@ export function AnalyticsPage({ transactions, servidores, movements, planos }: A
         transactions={transactions}
         servidores={servidores}
         movements={movements}
+        month={month}
+        year={year}
+      />
+
+      {/* Sales mix */}
+      <SalesMixSummary
+        transactions={transactions}
+        servidores={servidores}
+        planos={planos}
         month={month}
         year={year}
       />

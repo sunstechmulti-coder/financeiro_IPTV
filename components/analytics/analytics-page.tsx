@@ -161,6 +161,18 @@ function normalizeText(value: unknown) {
     .toLowerCase()
 }
 
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function hasNormalizedToken(text: string, token: string) {
+  const safeToken = normalizeText(token).trim()
+  if (!safeToken) return false
+
+  const pattern = new RegExp(`(^|[^a-z0-9])${escapeRegExp(safeToken)}([^a-z0-9]|$)`, 'i')
+  return pattern.test(text)
+}
+
 function toNumber(value: unknown) {
   if (value === null || value === undefined || value === '') return 0
 
@@ -593,19 +605,41 @@ function findMatchingPlan(record: any, planos: PlanoEntrada[]) {
     if (byId) return byId
   }
 
-  const description = normalizeText(getRecordDescription(record))
+  const description = normalizeText(getRecordDescription(record)).trim()
 
   if (!description) return null
 
-  return planos.find((plan: any) => {
-    const codigo = normalizeText(plan?.codigo ?? plan?.code ?? '')
-    const descricao = normalizeText(getPlanLabel(plan))
+  const scoredPlans = planos
+    .map((plan: any) => {
+      const codigo = normalizeText(plan?.codigo ?? plan?.code ?? '').trim()
+      const descricao = normalizeText(getPlanLabel(plan)).trim()
 
-    return (
-      (codigo.length > 1 && description.includes(codigo)) ||
-      (descricao.length > 2 && description.includes(descricao))
-    )
-  }) ?? null
+      let score = 0
+
+      // Prioridade máxima: a descrição da transação bate exatamente com o plano.
+      if (descricao && description === descricao) score = Math.max(score, 100)
+
+      // Depois: descrição completa do plano aparece na transação.
+      if (descricao.length > 2 && description.includes(descricao)) score = Math.max(score, 90)
+
+      // Código só pode bater como palavra/código isolado.
+      // Isso evita erro como RAZ ser encontrado dentro de "BRAZIL".
+      if (codigo.length > 1 && hasNormalizedToken(description, codigo)) score = Math.max(score, 80)
+
+      return {
+        plan,
+        score,
+        descriptionLength: descricao.length,
+      }
+    })
+    .filter(item => item.score > 0)
+    .sort((a, b) => {
+      const scoreDiff = b.score - a.score
+      if (scoreDiff !== 0) return scoreDiff
+      return b.descriptionLength - a.descriptionLength
+    })
+
+  return scoredPlans[0]?.plan ?? null
 }
 
 function detectSaleKind(record: any, plan: PlanoEntrada | null): { key: SalesKindKey; label: string } {
@@ -648,19 +682,7 @@ function detectSaleKind(record: any, plan: PlanoEntrada | null): { key: SalesKin
   return { key: 'other', label: 'Outras vendas' }
 }
 
-function detectSaleCycle(record: any, plan: PlanoEntrada | null): { key: SalesCycleKey; label: string; rank: number } {
-  const raw = normalizeText([
-    getRecordDescription(record),
-    (plan as any)?.period,
-    (plan as any)?.periodo,
-    (plan as any)?.periodicidade,
-    (plan as any)?.cycle,
-    (plan as any)?.ciclo,
-    (plan as any)?.duration,
-    (plan as any)?.duracao,
-    getPlanLabel(plan),
-  ].filter(Boolean).join(' '))
-
+function detectCycleFromText(raw: string): { key: SalesCycleKey; label: string; rank: number } | null {
   if (
     raw.includes('anual') ||
     raw.includes('12 meses') ||
@@ -711,7 +733,28 @@ function detectSaleCycle(record: any, plan: PlanoEntrada | null): { key: SalesCy
     return { key: 'monthly', label: 'Mensal', rank: 1 }
   }
 
-  return { key: 'other', label: 'Não informado', rank: 99 }
+  return null
+}
+
+function detectSaleCycle(record: any, plan: PlanoEntrada | null): { key: SalesCycleKey; label: string; rank: number } {
+  const descriptionCycle = detectCycleFromText(normalizeText(getRecordDescription(record)))
+
+  // A descrição do lançamento é a fonte mais confiável quando ela já traz o período.
+  // Isso impede um plano encontrado por aproximação de transformar "Mensal" em "Anual".
+  if (descriptionCycle) return descriptionCycle
+
+  const raw = normalizeText([
+    (plan as any)?.period,
+    (plan as any)?.periodo,
+    (plan as any)?.periodicidade,
+    (plan as any)?.cycle,
+    (plan as any)?.ciclo,
+    (plan as any)?.duration,
+    (plan as any)?.duracao,
+    getPlanLabel(plan),
+  ].filter(Boolean).join(' '))
+
+  return detectCycleFromText(raw) ?? { key: 'other', label: 'Não informado', rank: 99 }
 }
 
 function resolveSaleServer(record: any, plan: PlanoEntrada | null, servidores: Servidor[]) {
@@ -844,6 +887,10 @@ function buildSaleProductName(
   cycleKey: SalesCycleKey,
   serverName: string
 ) {
+  const recordDescription = getRecordDescription(record).trim()
+
+  if (recordDescription) return recordDescription
+
   const planLabel = getPlanLabel(plan)
 
   if (planLabel) return planLabel
@@ -856,7 +903,7 @@ function buildSaleProductName(
 
   if (pieces.length > 0) return pieces.join(' ')
 
-  return getRecordDescription(record) || 'Venda'
+  return 'Venda'
 }
 
 function buildSalesMixAnalytics(

@@ -1570,7 +1570,7 @@ function SalesMixSummary({
 
         {data.hasSales && (
           <div className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-500">
-            Lucro estimado: {formatCurrency(data.totalProfit)}
+            Lucro bruto das vendas: {formatCurrency(data.totalProfit)}
           </div>
         )}
       </div>
@@ -1613,7 +1613,7 @@ function SalesMixSummary({
                 <p className="font-bold tabular-nums text-cyan-500">{formatCredits(filteredTotals.credits)}</p>
               </div>
               <div className="rounded-xl border border-border/50 bg-card/30 px-3 py-2">
-                <p className="text-muted-foreground">Lucro</p>
+                <p className="text-muted-foreground">Lucro bruto</p>
                 <p className={`font-bold tabular-nums ${filteredTotals.profit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
                   {formatCurrency(filteredTotals.profit)}
                 </p>
@@ -1699,7 +1699,7 @@ function SalesMixSummary({
                   <span className="text-right">Receita</span>
                   <span className="text-right">Ticket médio</span>
                   <span className="text-right">Créditos</span>
-                  <span className="text-right">Lucro est.</span>
+                  <span className="text-right">Lucro bruto</span>
                 </div>
 
                 {visibleRows.map((row) => (
@@ -1751,7 +1751,7 @@ function SalesMixSummary({
                         <p className="mt-0.5 font-semibold tabular-nums text-cyan-500">{formatCredits(row.credits)}</p>
                       </div>
                       <div className={`${row.profit >= 0 ? 'bg-emerald-500/10' : 'bg-rose-500/10'} rounded-lg px-2 py-2`}>
-                        <p className="text-muted-foreground">Lucro est.</p>
+                        <p className="text-muted-foreground">Lucro bruto</p>
                         <p className={`mt-0.5 font-semibold tabular-nums ${row.profit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
                           {formatCurrency(row.profit)}
                         </p>
@@ -2216,13 +2216,13 @@ export function AnalyticsPage({ transactions, servidores, movements, planos }: A
         ['Planos anuais', String(salesMix.annualCount)],
         ['Receita agrupada', formatCurrency(salesMix.totalRevenue)],
         ['Créditos consumidos', formatCredits(salesMix.totalCredits)],
-        ['Lucro estimado', formatCurrency(salesMix.totalProfit)],
+        ['Lucro bruto das vendas', formatCurrency(salesMix.totalProfit)],
       ],
       { fontSize: 9, headColor: [2, 132, 199] }
     )
 
     addTable(
-      [['Produto', 'Tipo', 'Período', 'Servidor', 'Valor', 'Qtd.', 'Receita', 'Créditos', 'Lucro est.']],
+      [['Produto', 'Tipo', 'Período', 'Servidor', 'Valor', 'Qtd.', 'Receita', 'Créditos', 'Lucro bruto']],
       salesMix.rows.length > 0
         ? salesMix.rows.map(item => [
             item.product,

@@ -111,6 +111,7 @@ interface SalesMixBreakdownRow {
 type SalesMixGroupBy = 'product' | 'server' | 'kind' | 'cycle'
 type SalesMixKindFilter = 'all' | SalesKindKey
 type SalesMixCycleFilter = 'all' | SalesCycleKey
+type SalesMixServerFilter = 'all' | string
 
 interface SalesMixViewRow {
   key: string
@@ -1495,23 +1496,57 @@ function SalesMixSummary({
   const [groupBy, setGroupBy] = useState<SalesMixGroupBy>('product')
   const [kindFilter, setKindFilter] = useState<SalesMixKindFilter>('all')
   const [cycleFilter, setCycleFilter] = useState<SalesMixCycleFilter>('all')
+  const [serverFilter, setServerFilter] = useState<SalesMixServerFilter>('all')
   const [showAllRows, setShowAllRows] = useState(false)
 
   useEffect(() => {
     setShowAllRows(false)
-  }, [groupBy, kindFilter, cycleFilter, month, year])
+  }, [groupBy, kindFilter, cycleFilter, serverFilter, month, year])
+
+  const serverOptions = useMemo(() => {
+    const map = new Map<string, { key: SalesMixServerFilter; label: string; count: number }>()
+
+    data.rows.forEach((row) => {
+      const key = normalizeText(row.serverId || row.serverName || 'sem-servidor') || 'sem-servidor'
+      const current = map.get(key) ?? {
+        key,
+        label: row.serverName || 'Sem servidor',
+        count: 0,
+      }
+
+      current.count += row.count
+      map.set(key, current)
+    })
+
+    const options = Array.from(map.values()).sort((a, b) => {
+      const countDiff = b.count - a.count
+      if (countDiff !== 0) return countDiff
+      return a.label.localeCompare(b.label, 'pt-BR')
+    })
+
+    return [
+      { key: 'all' as const, label: 'Todos', count: data.totalSales },
+      ...options,
+    ]
+  }, [data.rows, data.totalSales])
+
+  const selectedServerLabel = serverOptions.find(option => option.key === serverFilter)?.label ?? ''
 
   const filteredRows = useMemo(() => {
     return data.rows.filter((row) => {
+      const rowServerKey = normalizeText(row.serverId || row.serverName || 'sem-servidor') || 'sem-servidor'
       const matchesKind = kindFilter === 'all' || row.kindKey === kindFilter
       const matchesCycle = cycleFilter === 'all' || row.cycleKey === cycleFilter
-      return matchesKind && matchesCycle
+      const matchesServer = serverFilter === 'all' || rowServerKey === serverFilter
+      return matchesKind && matchesCycle && matchesServer
     })
-  }, [data.rows, kindFilter, cycleFilter])
+  }, [data.rows, kindFilter, cycleFilter, serverFilter])
+
+  const effectiveGroupBy = serverFilter !== 'all' && groupBy === 'server' ? 'product' : groupBy
 
   const viewRows = useMemo(
-    () => aggregateSalesMixRows(filteredRows, groupBy),
-    [filteredRows, groupBy]
+    () => aggregateSalesMixRows(filteredRows, effectiveGroupBy),
+    [filteredRows, effectiveGroupBy]
   )
 
   const visibleRows = showAllRows ? viewRows : viewRows.slice(0, 10)
@@ -1593,7 +1628,7 @@ function SalesMixSummary({
     })),
   ]
 
-  const activeGroupLabel = groupOptions.find(option => option.key === groupBy)?.label ?? 'Produto/preço'
+  const activeGroupLabel = groupOptions.find(option => option.key === effectiveGroupBy)?.label ?? 'Produto/preço'
   const filteredTotals = viewRows.reduce(
     (acc, row) => {
       acc.count += row.count
@@ -1641,7 +1676,7 @@ function SalesMixSummary({
           <div>
             <h4 className="text-sm font-medium">Análise de vendas</h4>
             <p className="text-xs text-muted-foreground">
-              Visual atual: {activeGroupLabel}. Use os filtros para reduzir a lista sem criar outra tela.
+              Visual atual: {activeGroupLabel}{serverFilter !== 'all' ? ` • ${selectedServerLabel}` : ''}. Use os filtros para reduzir a lista sem criar outra tela.
             </p>
           </div>
 
@@ -1681,6 +1716,40 @@ function SalesMixSummary({
                   size="sm"
                   className="h-8 rounded-full px-3 text-xs"
                   onClick={() => setGroupBy(option.key)}
+                >
+                  {option.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Servidor</p>
+              {serverFilter !== 'all' && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 rounded-full px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                  onClick={() => setServerFilter('all')}
+                >
+                  Limpar servidor
+                </Button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {serverOptions.map((option) => (
+                <Button
+                  key={option.key}
+                  type="button"
+                  variant={serverFilter === option.key ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-8 rounded-full px-3 text-xs"
+                  onClick={() => {
+                    setServerFilter(option.key)
+                    if (option.key !== 'all' && groupBy === 'server') setGroupBy('product')
+                  }}
                 >
                   {option.label}
                 </Button>
@@ -1757,6 +1826,20 @@ function SalesMixSummary({
                     <div className="min-w-0">
                       <p className="truncate font-semibold">{row.label}</p>
                       <p className="truncate text-xs text-muted-foreground">{row.subtitle}</p>
+                      {groupBy === 'server' && serverFilter === 'all' && row.key.startsWith('server:') && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="mt-1 h-6 rounded-full px-0 text-[11px] text-sky-500 hover:bg-transparent hover:text-sky-400"
+                          onClick={() => {
+                            setServerFilter(row.key.replace('server:', ''))
+                            setGroupBy('product')
+                          }}
+                        >
+                          Ver variações deste servidor
+                        </Button>
+                      )}
                     </div>
                     <span className="self-center text-right font-bold tabular-nums text-sky-500">{row.count}</span>
                     <span className="self-center text-right tabular-nums text-emerald-500">{formatCurrency(row.revenue)}</span>
@@ -1776,6 +1859,20 @@ function SalesMixSummary({
                       <div className="min-w-0">
                         <p className="line-clamp-2 text-sm font-semibold">{row.label}</p>
                         <p className="mt-0.5 text-xs text-muted-foreground">{row.subtitle}</p>
+                        {groupBy === 'server' && serverFilter === 'all' && row.key.startsWith('server:') && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="mt-1 h-6 rounded-full px-0 text-[11px] text-sky-500 hover:bg-transparent hover:text-sky-400"
+                            onClick={() => {
+                              setServerFilter(row.key.replace('server:', ''))
+                              setGroupBy('product')
+                            }}
+                          >
+                            Ver variações
+                          </Button>
+                        )}
                       </div>
 
                       <div className="shrink-0 text-right">

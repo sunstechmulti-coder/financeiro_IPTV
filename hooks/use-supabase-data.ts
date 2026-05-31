@@ -55,6 +55,38 @@ export function useSupabaseData() {
 
     if (isMounted.current) setUserId(user.id)
 
+    const fetchAllRowsByUser = async (
+      table: string,
+      orderColumn: string,
+      ascending: boolean
+    ): Promise<Record<string, unknown>[]> => {
+      const pageSize = 1000
+      let from = 0
+      let allRows: Record<string, unknown>[] = []
+      let hasMore = true
+
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from(table)
+          .select('*')
+          .eq('user_id', user.id)
+          .order(orderColumn, { ascending })
+          .range(from, from + pageSize - 1)
+
+        if (error) {
+          console.error(`Erro ao buscar ${table}:`, error)
+          return allRows
+        }
+
+        const rows = (data || []) as Record<string, unknown>[]
+        allRows = [...allRows, ...rows]
+        hasMore = rows.length === pageSize
+        from += pageSize
+      }
+
+      return allRows
+    }
+
     // Fetch servidores
     const { data: servidoresData } = await supabase
       .from('servidores')
@@ -67,14 +99,10 @@ export function useSupabaseData() {
     }
 
     // Fetch transactions
-    const { data: transactionsData } = await supabase
-      .from('transactions')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
+    const transactionsData = await fetchAllRowsByUser('transactions', 'created_at', false)
 
     if (isMounted.current) {
-      setTransactions((transactionsData || []).map(mapTransactionFromDB))
+      setTransactions(transactionsData.map(mapTransactionFromDB))
     }
 
     // Fetch planos
@@ -100,14 +128,10 @@ export function useSupabaseData() {
     }
 
     // Fetch credit movements
-    const { data: movementsData } = await supabase
-      .from('credit_movements')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('date', { ascending: false })
+    const movementsData = await fetchAllRowsByUser('credit_movements', 'date', false)
 
     if (isMounted.current) {
-      setCreditMovements((movementsData || []).map(mapCreditMovementFromDB))
+      setCreditMovements(movementsData.map(mapCreditMovementFromDB))
     }
 
     // Fetch activation products
@@ -122,14 +146,10 @@ export function useSupabaseData() {
     }
 
     // Fetch activation transactions
-    const { data: actTxData } = await supabase
-      .from('activation_transactions')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
+    const actTxData = await fetchAllRowsByUser('activation_transactions', 'created_at', false)
 
     if (isMounted.current) {
-      setActivationTransactions((actTxData || []).map(mapActivationTransactionFromDB))
+      setActivationTransactions(actTxData.map(mapActivationTransactionFromDB))
     }
 
     // Fetch revenda grupos

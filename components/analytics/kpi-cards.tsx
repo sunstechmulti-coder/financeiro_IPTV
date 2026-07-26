@@ -360,13 +360,13 @@ export function KpiCards({ transactions, month, year, prevTransactions }: KpiCar
               </div>
 
               <div
-                className="relative flex h-20 w-20 shrink-0 items-center justify-center rounded-full"
+                className="relative flex h-20 w-20 shrink-0 items-center justify-center rounded-full p-[6px]"
                 style={{
-                  background: `conic-gradient(hsl(var(--income)) ${confidence * 3.6}deg, hsl(var(--muted)) 0deg)`,
+                  background: `conic-gradient(#22c55e 0deg ${confidence * 3.6}deg, rgba(148, 163, 184, 0.18) ${confidence * 3.6}deg 360deg)`,
                 }}
                 aria-label={`${confidence}% de confiabilidade`}
               >
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-card">
+                <div className="flex h-full w-full items-center justify-center rounded-full bg-card">
                   <ShieldCheck className="h-7 w-7 text-income" />
                 </div>
               </div>

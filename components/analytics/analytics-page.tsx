@@ -155,6 +155,10 @@ const MONTH_NAMES = [
 
 const CREDIT_WARNING_LIMIT = 10
 
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max)
+}
+
 function normalizeText(value: unknown) {
   return String(value ?? '')
     .normalize('NFD')
@@ -1988,6 +1992,129 @@ export function AnalyticsPage({ transactions, servidores, movements, planos }: A
     const monthProjection = isCurrentMonth ? dailyAverage * daysInMonth : totalIncome
     const expensePercent = totalIncome > 0 ? (totalExpenses / totalIncome) * 100 : 0
 
+    /*
+     * Repete no PDF a mesma metodologia usada no card de projeção inteligente:
+     * ritmo atual combinado ao comportamento dos três meses completos anteriores.
+     */
+    const historicalMonths = [1, 2, 3]
+      .map(monthOffset => {
+        const historicalDate = new Date(year, month - monthOffset, 1)
+        const historicalMonth = historicalDate.getMonth()
+        const historicalYear = historicalDate.getFullYear()
+        const historicalDays = new Date(historicalYear, historicalMonth + 1, 0).getDate()
+        const comparableDay = Math.min(daysElapsed, historicalDays)
+
+        const historicalIncomeTransactions = transactions.filter(transaction => {
+          if (transaction.type !== 'income') return false
+
+          const date = new Date(transaction.date + 'T00:00:00')
+          return date.getMonth() === historicalMonth && date.getFullYear() === historicalYear
+        })
+
+        const historicalTotal = historicalIncomeTransactions.reduce(
+          (sum, transaction) => sum + transaction.amount,
+          0,
+        )
+        const historicalIncomeUntilDay = historicalIncomeTransactions
+          .filter(transaction => {
+            const date = new Date(transaction.date + 'T00:00:00')
+            return date.getDate() <= comparableDay
+          })
+          .reduce((sum, transaction) => sum + transaction.amount, 0)
+
+        return {
+          progressRatio:
+            historicalTotal > 0 ? historicalIncomeUntilDay / historicalTotal : 0,
+          weight: 4 - monthOffset,
+        }
+      })
+      .filter(item => item.progressRatio > 0)
+
+    const totalHistoricalWeight = historicalMonths.reduce(
+      (sum, item) => sum + item.weight,
+      0,
+    )
+    const weightedHistoricalProgress =
+      totalHistoricalWeight > 0
+        ? historicalMonths.reduce(
+            (sum, item) => sum + item.progressRatio * item.weight,
+            0,
+          ) / totalHistoricalWeight
+        : 0
+
+    const historicalProjection =
+      weightedHistoricalProgress > 0
+        ? totalIncome / weightedHistoricalProgress
+        : monthProjection
+    const historyWeight = (historicalMonths.length / 3) * 0.6
+    const blendedProjection =
+      monthProjection * (1 - historyWeight) + historicalProjection * historyWeight
+    const intelligentProjection = isCurrentMonth
+      ? Math.max(totalIncome, blendedProjection)
+      : totalIncome
+
+    const historicalProgressAverage =
+      historicalMonths.length > 0
+        ? historicalMonths.reduce((sum, item) => sum + item.progressRatio, 0) /
+          historicalMonths.length
+        : 0
+    const historicalVariation =
+      historicalMonths.length > 1 && historicalProgressAverage > 0
+        ? Math.sqrt(
+            historicalMonths.reduce(
+              (sum, item) =>
+                sum + Math.pow(item.progressRatio - historicalProgressAverage, 2),
+              0,
+            ) / historicalMonths.length,
+          ) / historicalProgressAverage
+        : historicalMonths.length === 1
+          ? 0.35
+          : 1
+    const projectionDifference =
+      monthProjection > 0
+        ? Math.abs(historicalProjection - monthProjection) / monthProjection
+        : 1
+
+    const progressScore = (daysElapsed / daysInMonth) * 45
+    const historyScore = (historicalMonths.length / 3) * 25
+    const stabilityScore = (1 - clamp(historicalVariation, 0, 1)) * 20
+    const agreementScore = (1 - clamp(projectionDifference, 0, 1)) * 10
+    const projectionConfidence = isCurrentMonth
+      ? Math.round(
+          clamp(
+            progressScore + historyScore + stabilityScore + agreementScore,
+            10,
+            99,
+          ),
+        )
+      : 100
+    const confidenceLabel =
+      projectionConfidence >= 90
+        ? 'Muito alta'
+        : projectionConfidence >= 75
+          ? 'Alta'
+          : projectionConfidence >= 50
+            ? 'Moderada'
+            : 'Baixa'
+
+    const uncertainty = isCurrentMonth
+      ? clamp(
+          (1 - projectionConfidence / 100) * 0.25 + projectionDifference * 0.15,
+          0.04,
+          0.25,
+        )
+      : 0
+    const probableMinimum = isCurrentMonth
+      ? Math.max(totalIncome, intelligentProjection * (1 - uncertainty))
+      : totalIncome
+    const probableMaximum = isCurrentMonth
+      ? Math.max(intelligentProjection, intelligentProjection * (1 + uncertainty))
+      : totalIncome
+    const historicalMonthsLabel =
+      historicalMonths.length === 1
+        ? '1 mês'
+        : `${historicalMonths.length} meses`
+
     const aggregateByDescription = (type: 'income' | 'expense') => {
       const map = new Map<string, { description: string; count: number; total: number }>()
 
@@ -2229,7 +2356,28 @@ export function AnalyticsPage({ transactions, servidores, movements, planos }: A
         ['Qtd. de vendas', String(salesCount)],
         ['Ticket médio', formatCurrency(ticketAverage)],
         ['Média diária de entradas', `${formatCurrency(dailyAverage)} / dia`],
-        [isCurrentMonth ? 'Projeção do mês' : 'Fechamento do mês', formatCurrency(monthProjection)],
+        [
+          isCurrentMonth ? 'Projeção inteligente do mês' : 'Fechamento do mês',
+          formatCurrency(intelligentProjection),
+        ],
+        [
+          'Faixa provável',
+          isCurrentMonth
+            ? `${formatCurrency(probableMinimum)} a ${formatCurrency(probableMaximum)}`
+            : formatCurrency(totalIncome),
+        ],
+        [
+          'Confiabilidade da projeção',
+          isCurrentMonth
+            ? `${projectionConfidence}% — ${confidenceLabel}`
+            : '100% — Mês encerrado',
+        ],
+        [
+          'Histórico considerado',
+          historicalMonths.length > 0
+            ? historicalMonthsLabel
+            : 'Sem histórico — utilizado somente o ritmo atual',
+        ],
         ['Despesas sobre entradas', `${expensePercent.toFixed(1).replace('.', ',')}%`],
       ],
       { fontSize: 9, headColor: [0, 132, 255] }
@@ -2243,6 +2391,9 @@ export function AnalyticsPage({ transactions, servidores, movements, planos }: A
       salesCount > 0
         ? `Foram registradas ${salesCount} vendas/entradas, com ticket médio de ${formatCurrency(ticketAverage)}.`
         : 'Não houve vendas/entradas registradas neste período.',
+      isCurrentMonth
+        ? `A projeção inteligente indica fechamento em ${formatCurrency(intelligentProjection)}, com faixa provável entre ${formatCurrency(probableMinimum)} e ${formatCurrency(probableMaximum)} e confiabilidade de ${projectionConfidence}% (${confidenceLabel.toLowerCase()}).`
+        : `O período está encerrado e apresenta receita consolidada de ${formatCurrency(totalIncome)}.`,
     ]
 
     quickSummary.forEach(addSmallText)
@@ -2415,6 +2566,8 @@ export function AnalyticsPage({ transactions, servidores, movements, planos }: A
     addSectionTitle('Observações')
 
     addSmallText(`Este relatório considera apenas as transações registradas em ${reportMonthLabel}.`)
+    addSmallText('A projeção inteligente combina o ritmo atual com o comportamento proporcional de até três meses completos anteriores.')
+    addSmallText('A faixa provável e a confiabilidade variam conforme o avanço do mês, a quantidade de histórico e a estabilidade das vendas.')
     addSmallText('O fluxo de créditos considera movimentos do mês selecionado e o saldo atual dos servidores.')
     addSmallText('Os créditos por servidor representam o saldo atual no momento da emissão, não um fechamento histórico mensal.')
     addSmallText('Para análise detalhada de cada lançamento individual, utilize também a exportação CSV da aba Transações.')

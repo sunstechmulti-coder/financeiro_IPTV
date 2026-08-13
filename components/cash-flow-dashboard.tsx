@@ -15,6 +15,7 @@ import {
   MessageCircle,
   Store,
   AlertTriangle,
+  UserPlus,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SummaryCards } from '@/components/summary-cards'
@@ -24,7 +25,10 @@ import { RevenueHeatmap } from '@/components/revenue-heatmap'
 import { CreditsCard } from '@/components/credits-card'
 import { QuickEntry } from '@/components/quick-entry'
 import { ConfigPage } from '@/components/config/config-page'
-import { AnalyticsPage } from '@/components/analytics/analytics-page'
+import {
+  AnalyticsPage,
+  buildSalesMixAnalytics,
+} from '@/components/analytics/analytics-page'
 import { DailyRobotAssistant } from '@/components/daily-robot-assistant'
 import { ResellerClientsPanel } from '@/components/reseller/reseller-clients-panel'
 import { cn } from '@/lib/utils'
@@ -423,6 +427,30 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
     }
   }, [transactions, selectedMonth, selectedYear])
 
+  const newClientsSummary = useMemo(() => {
+    const current = buildSalesMixAnalytics(
+      transactions,
+      servidores,
+      planos,
+      selectedMonth,
+      selectedYear
+    ).newClientCount
+
+    const previousDate = new Date(selectedYear, selectedMonth - 1, 1)
+    const previous = buildSalesMixAnalytics(
+      transactions,
+      servidores,
+      planos,
+      previousDate.getMonth(),
+      previousDate.getFullYear()
+    ).newClientCount
+
+    const variation =
+      previous > 0 ? ((current - previous) / previous) * 100 : current > 0 ? 100 : 0
+
+    return { current, previous, variation }
+  }, [transactions, servidores, planos, selectedMonth, selectedYear])
+
   const registerCreditMovementFromTransaction = async (
     transaction: Transaction | null | undefined
   ) => {
@@ -664,6 +692,48 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
                 totalExpenses={totalExpenses}
                 balance={balance}
               />
+
+              <div className="flex flex-col gap-4 rounded-xl border border-blue-500/40 bg-blue-500/[0.06] p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/30">
+                    <UserPlus className="h-6 w-6" />
+                  </div>
+
+                  <div>
+                    <p className="text-sm text-muted-foreground">Novos clientes no mês</p>
+                    <p className="text-3xl font-bold text-blue-400">
+                      {newClientsSummary.current}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="text-left sm:text-right">
+                  {newClientsSummary.previous > 0 ? (
+                    <div
+                      className={cn(
+                        'inline-flex rounded-full px-3 py-1 text-xs font-semibold',
+                        newClientsSummary.variation >= 0
+                          ? 'bg-emerald-500/15 text-emerald-400'
+                          : 'bg-destructive/15 text-destructive'
+                      )}
+                    >
+                      {newClientsSummary.variation >= 0 ? '+' : ''}
+                      {newClientsSummary.variation.toLocaleString('pt-BR', {
+                        minimumFractionDigits: 1,
+                        maximumFractionDigits: 1,
+                      })}% vs. mês anterior
+                    </div>
+                  ) : (
+                    <div className="inline-flex rounded-full bg-blue-500/15 px-3 py-1 text-xs font-semibold text-blue-400">
+                      Sem base no mês anterior
+                    </div>
+                  )}
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {newClientsSummary.previous}{' '}
+                    {newClientsSummary.previous === 1 ? 'cliente' : 'clientes'} no mês anterior
+                  </p>
+                </div>
+              </div>
 
               <CreditsCard servidores={servidores} movements={movements} transactions={transactions} />
 

@@ -127,7 +127,7 @@ interface SalesMixViewRow {
   variationCount: number
 }
 
-interface SalesMixAnalytics {
+export interface SalesMixAnalytics {
   rows: SalesMixRow[]
   typeRows: SalesMixBreakdownRow[]
   cycleRows: SalesMixBreakdownRow[]
@@ -911,7 +911,7 @@ function buildSaleProductName(
   return 'Venda'
 }
 
-function buildSalesMixAnalytics(
+export function buildSalesMixAnalytics(
   transactions: Transaction[],
   servidores: Servidor[],
   planos: PlanoEntrada[],

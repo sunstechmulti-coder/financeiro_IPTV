@@ -21,12 +21,6 @@ import { Button } from '@/components/ui/button'
 import { SummaryCards } from '@/components/summary-cards'
 import { TransactionsTable } from '@/components/transactions-table'
 import { TransactionDialog } from '@/components/transaction-dialog'
-import { PrintingTransactionDialog } from '@/components/printing-transaction-dialog'
-import { ActivityFilter } from '@/components/activity-filter'
-import { ActivityOverview } from '@/components/activity-overview'
-import { ActivityAnalytics } from '@/components/analytics/activity-analytics'
-import { filterActivity } from '@/lib/activity'
-import type { ActivityScope } from '@/lib/activity'
 import { RevenueHeatmap } from '@/components/revenue-heatmap'
 import { CreditsCard } from '@/components/credits-card'
 import { QuickEntry } from '@/components/quick-entry'
@@ -354,8 +348,6 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
     planos,
     saidasRapidas,
     loading,
-    activitySchemaReady,
-    canUsePrinting,
     addTransaction,
     updateTransaction,
     deleteTransaction,
@@ -386,39 +378,6 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [activeTab, setActiveTab] = useState<Tab>('dashboard')
-  const [activityScope, setActivityScope] = useState<ActivityScope>('all')
-  const [transactionMode, setTransactionMode] = useState<'iptv' | 'printing_3d'>('iptv')
-  const adminActivities = activitySchemaReady && canUsePrinting
-  const viewTransactions = useMemo(
-    () => filterActivity(transactions, activityScope, adminActivities),
-    [transactions, activityScope, adminActivities],
-  )
-  const iptvTransactions = useMemo(
-    () => adminActivities
-      ? filterActivity(transactions, 'iptv')
-      : filterActivity(transactions, 'all', false),
-    [transactions, adminActivities],
-  )
-  const unclassifiedCount = transactions.filter(t => !t.activity).length
-  const canReclassifyAsPrinting = !editingTransaction || (
-    !editingTransaction.serverId && !editingTransaction.creditsDelta
-    && editingTransaction.costSnapshot == null
-    && !movements.some(m => m.transactionId === editingTransaction.id)
-    && !getActivationTransactionByTransactionId(editingTransaction.id)
-  )
-  const openPrintingEntry = () => {
-    if (!adminActivities) return
-    setEditingTransaction(null)
-    setTransactionMode('printing_3d')
-    setDialogOpen(true)
-  }
-
-  useEffect(() => {
-    if (!adminActivities) {
-      setActivityScope('all')
-      setTransactionMode('iptv')
-    }
-  }, [adminActivities])
 
   useEffect(() => {
     if (activeTab === 'clientes' && !isReseller) {
@@ -448,7 +407,7 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
   }
 
   const { totalIncome, totalExpenses, balance } = useMemo(() => {
-    const monthTransactions = viewTransactions.filter((t) => {
+    const monthTransactions = transactions.filter((t) => {
       const date = new Date(t.date + 'T00:00:00')
       return date.getMonth() === selectedMonth && date.getFullYear() === selectedYear
     })
@@ -466,11 +425,11 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
       totalExpenses: expenses,
       balance: income - expenses,
     }
-  }, [viewTransactions, selectedMonth, selectedYear])
+  }, [transactions, selectedMonth, selectedYear])
 
   const newClientsSummary = useMemo(() => {
     const current = buildSalesMixAnalytics(
-      iptvTransactions,
+      transactions,
       servidores,
       planos,
       selectedMonth,
@@ -479,7 +438,7 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
 
     const previousDate = new Date(selectedYear, selectedMonth - 1, 1)
     const previous = buildSalesMixAnalytics(
-      iptvTransactions,
+      transactions,
       servidores,
       planos,
       previousDate.getMonth(),
@@ -490,12 +449,12 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
       previous > 0 ? ((current - previous) / previous) * 100 : current > 0 ? 100 : 0
 
     return { current, previous, variation }
-  }, [iptvTransactions, servidores, planos, selectedMonth, selectedYear])
+  }, [transactions, servidores, planos, selectedMonth, selectedYear])
 
   const registerCreditMovementFromTransaction = async (
     transaction: Transaction | null | undefined
   ) => {
-    if (!transaction?.serverId || transaction.activity === 'printing_3d') return
+    if (!transaction?.serverId) return
 
     const creditsDelta = Number(transaction.creditsDelta ?? 0)
 
@@ -511,7 +470,6 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
   }
 
   const handleSaveTransaction = async (transaction: Transaction) => {
-    if (adminActivities) transaction = { ...transaction, activity: 'iptv', printingDetails: null }
     if (editingTransaction) {
       await updateTransaction(transaction)
     } else {
@@ -526,13 +484,6 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
   const handleQuickEntrySaveTransaction = async (transaction: Transaction) => {
     const savedTransaction = await addTransaction(transaction)
     await registerCreditMovementFromTransaction(savedTransaction)
-  }
-
-  const handleSavePrinting = async (transaction: Transaction): Promise<boolean> => {
-    if (!adminActivities || !canReclassifyAsPrinting) return false
-    if (transaction.serverId || transaction.creditsDelta) return false
-    const saved = editingTransaction ? await updateTransaction(transaction) : await addTransaction(transaction)
-    return !!saved
   }
 
   const handleDeleteTransaction = async (id: string) => {
@@ -551,16 +502,6 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
 
     await deleteTransaction(id)
   }
-
-  const activitySelector = adminActivities && !editingTransaction?.activity ? (
-    <div className="flex gap-2" role="group" aria-label="Atividade do lançamento">
-      <Button type="button" size="sm" variant={transactionMode === 'iptv' ? 'default' : 'outline'}
-        aria-pressed={transactionMode === 'iptv'} onClick={() => setTransactionMode('iptv')}>IPTV</Button>
-      <Button type="button" size="sm" variant={transactionMode === 'printing_3d' ? 'default' : 'outline'}
-        disabled={!canReclassifyAsPrinting} aria-pressed={transactionMode === 'printing_3d'}
-        onClick={() => setTransactionMode('printing_3d')}>Impressão 3D</Button>
-    </div>
-  ) : null
 
   if (loading) {
     return (
@@ -653,7 +594,6 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
               size="sm"
               onClick={() => {
                 setEditingTransaction(null)
-                setTransactionMode(adminActivities && activityScope === 'printing_3d' ? 'printing_3d' : 'iptv')
                 setDialogOpen(true)
               }}
               className="hidden shrink-0 lg:flex"
@@ -690,7 +630,6 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
               size="sm"
               onClick={() => {
                 setEditingTransaction(null)
-                setTransactionMode(adminActivities && activityScope === 'printing_3d' ? 'printing_3d' : 'iptv')
                 setDialogOpen(true)
               }}
               className="h-12 w-12 rounded-full p-0 shadow-lg shadow-primary/20"
@@ -711,27 +650,14 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
 
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-6xl space-y-6 p-4 pb-32 lg:pb-24">
-          {adminActivities && (activeTab === 'dashboard' || activeTab === 'transacoes' || activeTab === 'analytics') && (
-            <ActivityFilter value={activityScope} unclassified={unclassifiedCount}
-              onChange={scope => {
-                setActivityScope(scope)
-                if (scope === 'unclassified') setActiveTab('transacoes')
-              }} />
-          )}
           {activeTab === 'dashboard' && (
             <>
-              {adminActivities && activityScope === 'printing_3d' ? (
-                <Button className="w-full justify-start" variant="outline" onClick={openPrintingEntry}>
-                  <Plus className="mr-2 h-4 w-4" />Lançamento Express · Venda 3D
-                </Button>
-              ) : (
               <QuickEntry
                 planos={planos}
                 servidores={servidores}
                 onSave={handleQuickEntrySaveTransaction}
                 onAdjustCredits={adjustCreditsBalance}
               />
-              )}
 
               <div className="flex items-center justify-end gap-2">
                 <Button
@@ -759,7 +685,7 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
                 </Button>
               </div>
 
-              <DailyRobotAssistant transactions={viewTransactions} />
+              <DailyRobotAssistant transactions={transactions} />
 
               <SummaryCards
                 totalIncome={totalIncome}
@@ -767,12 +693,6 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
                 balance={balance}
               />
 
-              {adminActivities && (activityScope === 'printing_3d' || activityScope === 'all') && (
-                <ActivityOverview transactions={transactions} scope={activityScope}
-                  month={selectedMonth} year={selectedYear} onNew={openPrintingEntry} />
-              )}
-
-              {(!adminActivities || activityScope === 'iptv') && (
               <div className="flex flex-col gap-4 rounded-xl border border-blue-500/40 bg-blue-500/[0.06] p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-4">
                   <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/30">
@@ -814,13 +734,10 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
                   </p>
                 </div>
               </div>
-              )}
 
-              {(!adminActivities || activityScope === 'iptv' || activityScope === 'all') && (
-                <CreditsCard servidores={servidores} movements={movements} transactions={iptvTransactions} />
-              )}
+              <CreditsCard servidores={servidores} movements={movements} transactions={transactions} />
 
-              <RevenueHeatmap transactions={viewTransactions} />
+              <RevenueHeatmap transactions={transactions} />
             </>
           )}
 
@@ -828,12 +745,10 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
 
           {activeTab === 'transacoes' && (
             <TransactionsTable
-              showActivity={adminActivities}
-              transactions={viewTransactions}
+              transactions={transactions}
               servidores={servidores}
               onEdit={(tx) => {
                 setEditingTransaction(tx)
-                setTransactionMode(tx.activity === 'printing_3d' ? 'printing_3d' : 'iptv')
                 setDialogOpen(true)
               }}
               onDelete={handleDeleteTransaction}
@@ -841,16 +756,12 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
           )}
 
           {activeTab === 'analytics' && (
-            adminActivities && activityScope !== 'iptv' ? (
-              <ActivityAnalytics transactions={transactions} scope={activityScope} />
-            ) : (
-              <AnalyticsPage
-                transactions={iptvTransactions}
-                servidores={servidores}
-                movements={movements}
-                planos={planos}
-              />
-            )
+            <AnalyticsPage
+              transactions={transactions}
+              servidores={servidores}
+              movements={movements}
+              planos={planos}
+            />
           )}
 
           {activeTab === 'configuracoes' && (
@@ -887,12 +798,7 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
         <p>Desenvolvido por Sun&apos;s Tech.</p>
       </footer>
 
-      {adminActivities && transactionMode === 'printing_3d' ? (
-        <PrintingTransactionDialog open={dialogOpen} onOpenChange={setDialogOpen}
-          transaction={editingTransaction} activitySelector={activitySelector} onSave={handleSavePrinting} />
-      ) : (
       <TransactionDialog
-        activitySelector={activitySelector}
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         transaction={editingTransaction}
@@ -904,7 +810,6 @@ export function CashFlowDashboard({ subscription }: CashFlowDashboardProps) {
         onSave={handleSaveTransaction}
         onAdjustCredits={adjustCreditsBalance}
       />
-      )}
     </div>
   )
 }

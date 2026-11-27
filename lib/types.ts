@@ -1,13 +1,4 @@
-export interface PrintingDetails {
-  customerName?: string
-  productName?: string
-  category?: string
-  paymentMethod?: string
-}
-
 export interface Transaction {
-  activity?: 'iptv' | 'printing_3d' | null
-  printingDetails?: PrintingDetails | null
   id: string
   date: string
   type: 'income' | 'expense'

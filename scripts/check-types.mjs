@@ -16,7 +16,9 @@ function diagnostics(cwd) {
   return output.split('\n').filter(line => line.includes('error TS')).map(line => line.replace(/\(\d+,\d+\)/g, ''))
 }
 try {
-  execFileSync('tar', ['-x', '-C', temporary], { input: execFileSync('git', ['archive', base]) })
+  const archive = join(temporary, 'baseline.tar')
+  execFileSync('git', ['archive', '--output', archive, base])
+  execFileSync('tar', ['-xf', archive, '-C', temporary])
   symlinkSync(resolve('node_modules'), join(temporary, 'node_modules'), 'dir')
   const before = diagnostics(temporary)
   const after = diagnostics(root)

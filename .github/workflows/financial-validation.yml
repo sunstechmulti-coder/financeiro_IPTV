@@ -42,3 +42,35 @@ jobs:
         run: node scripts/check-types.mjs
       - name: Build the application without production credentials
         run: pnpm build
+  interface:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: build-test-key
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - run: npm install --global pnpm@10.11.0
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: npm --prefix tests/ui install --ignore-scripts --no-audit --no-fund
+      - name: Install the isolated test browser
+        working-directory: tests/ui
+        run: npx playwright install --with-deps chromium
+      - name: Create the temporary fixture route
+        run: node scripts/create-review-fixture.mjs
+      - name: Test the form and capture review screenshots
+        run: npm --prefix tests/ui test
+      - name: Save screenshots of the actual components with fictitious data
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: revisao-visual-3d
+          path: tests/ui/screenshots
+          if-no-files-found: ignore
+      - name: Remove the temporary review route
+        if: always()
+        run: rm -rf app/__review

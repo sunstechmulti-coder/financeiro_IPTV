@@ -59,6 +59,12 @@ perfis comuns/anônimos/admin, metadata sem poder conceder acesso, perda do pape
 admin, detalhes reservados a 3D, filtros, conciliação em centavos, períodos, ranking,
 clientes e valores monetários.
 
+Os testes de navegador usam os componentes reais em uma rota temporária gerada
+somente no CI, com dados em memória. Verificam clique duplo, falha de envio com
+preservação do formulário, CSV e PDF separados. Capturam três imagens, disponíveis
+no artefato revisao-visual-3d do workflow. A rota de teste não faz parte do código
+publicado nem se conecta ao Supabase.
+
 A aplicação é compilada com o lockfile existente e credenciais fictícias. O
 TypeScript é comparado à base do PR para identificar qualquer diagnóstico novo
 sem confundir erros preexistentes com esta alteração. Esses testes não substituem

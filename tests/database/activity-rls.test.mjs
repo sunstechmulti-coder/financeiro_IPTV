@@ -4,7 +4,7 @@ import test from 'node:test'
 import { PGlite } from '@electric-sql/pglite'
 
 const migration = await readFile(
-  new URL('../../supabase/migrations/20261127114238_add_transaction_activity_admin_3d.sql', import.meta.url),
+  new URL('../../supabase/migrations/20261127132031_add_transaction_activity_admin_3d.sql', import.meta.url),
   'utf8',
 )
 
@@ -87,6 +87,12 @@ const baseline = `
       '${serverId}', -0.5, 7, 3.5, 26.5, '2026-11-01T10:00:00Z', '2026-11-01T10:00:00Z'),
     (gen_random_uuid(), '${adminId}', '2026-11-02', 'income', 'Venda manual antiga',
       180, NULL, NULL, NULL, NULL, NULL, '2026-11-02T10:00:00Z', '2026-11-02T10:00:00Z');
+  CREATE TABLE public.credit_movements (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(), transaction_id uuid, server_id uuid,
+    credits numeric, type text
+  );
+  INSERT INTO public.credit_movements (transaction_id, server_id, credits, type)
+    VALUES ('${legacyId}', '${serverId}', 0.5, 'sale');
 `
 
 test('atividade e RLS preservam IPTV e restringem 3D ao administrador', async (t) => {
@@ -278,5 +284,35 @@ test('atividade e RLS preservam IPTV e restringem 3D ao administrador', async (t
     )
   } finally {
     await db.close()
+  }
+})
+
+test('verificação de integridade reverte qualquer mudança nos dados anteriores', async (t) => {
+  for (const [name, change] of [
+    ['lançamentos', 'UPDATE public.transactions SET amount = amount + 1;'],
+    ['saldos de créditos', 'UPDATE public.servidores SET credits_balance = credits_balance + 1;'],
+    ['movimentos de créditos', 'UPDATE public.credit_movements SET credits = credits + 1;'],
+  ]) {
+    await t.test(name, async () => {
+      const db = new PGlite()
+      try {
+        await db.exec(baseline)
+        const snapshot = async () => (await db.query(`SELECT jsonb_build_object(
+          'transactions', (SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM public.transactions t),
+          'servidores', (SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM public.servidores t),
+          'movements', (SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM public.credit_movements t)
+        ) AS data`)).rows[0].data
+        const before = await snapshot()
+        const modified = migration.replace('DO $preserve_existing_data$', change + '\nDO $preserve_existing_data$')
+        assert.notEqual(modified, migration)
+        await assert.rejects(db.exec(modified), { code: 'P0001' })
+        await db.exec('ROLLBACK')
+        assert.deepEqual(await snapshot(), before)
+        const columns = await db.query("SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='transactions' AND column_name IN ('activity','printing_details')")
+        assert.equal(columns.rows.length, 0)
+      } finally {
+        await db.close()
+      }
+    })
   }
 })

@@ -20,6 +20,10 @@ para inicializar um banco vazio.
 - Não são criadas funções SECURITY DEFINER, alterados perfis ou ampliados acessos.
 - Clientes antigos continuam funcionando sem enviar os campos novos.
 - A migração usa uma transação e limites de espera para evitar aplicação parcial.
+- Sob bloqueio, compara contagens e assinaturas dos registros de transações,
+  servidores e movimentos de créditos. Qualquer diferença aborta a operação.
+- A cópia privada de recuperação tem RLS habilitada e nenhum acesso pelos perfis
+  da aplicação; seu conteúdo não faz parte do repositório.
 
 ## Comportamento da aplicação
 
@@ -73,7 +77,8 @@ a validação visual e o teste autenticado da aplicação em um ambiente de revi
 ## Validação do proprietário e aplicação
 
 **Não aplicar SQL, reclassificar lançamentos, fazer merge ou publicar sem validação
-explícita do proprietário.** O PR permanece em rascunho para essa revisão.
+explícita do proprietário.** A reclassificação do histórico exige critérios próprios
+aprovados pelo proprietário, mesmo após a autorização da publicação.
 
 Depois da validação da estrutura proposta, registrar contagens, totais por período
 e saldos como referência, confirmar um meio de recuperação, aplicar somente a

@@ -73,4 +73,4 @@ jobs:
           if-no-files-found: ignore
       - name: Remove the temporary review route
         if: always()
-        run: rm -rf app/__review
+        run: rm -rf app/review-finance

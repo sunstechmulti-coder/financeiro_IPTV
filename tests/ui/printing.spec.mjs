@@ -6,7 +6,7 @@ import { join } from 'node:path'
 const screenshots = fileURLToPath(new URL('./screenshots', import.meta.url))
 test.beforeEach(async ({ page }) => {
   await page.clock.install({ time: new Date('2026-11-27T12:00:00Z') })
-  await page.goto('/__review')
+  await page.goto('/review-finance')
   await expect(page.getByText('Novembro 2026', { exact: true })).toBeVisible()
 })
 

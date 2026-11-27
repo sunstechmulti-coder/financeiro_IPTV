@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import type { ReactNode } from 'react'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { AlertCircle, CalendarIcon, Zap } from 'lucide-react'
@@ -40,6 +41,7 @@ import { getSalePrice } from '@/lib/activation-storage'
 const QUANTIDADES = [1, 2, 3, 5, 10, 20, 30, 50, 100]
 
 interface TransactionDialogProps {
+  activitySelector?: ReactNode
   open: boolean
   onOpenChange: (open: boolean) => void
   onSave: (transaction: Transaction) => void
@@ -65,6 +67,7 @@ export function TransactionDialog({
   saidasRapidas,
   activationProducts,
   revendaGrupos = [],
+  activitySelector,
 }: TransactionDialogProps) {
 
   // Common fields
@@ -515,6 +518,7 @@ export function TransactionDialog({
     // ── Manual ───────────────────────────────────────────────────────────────
     const numericAmount = parseFloat((amount || '0').replace(',', '.'))
     const tx: Transaction = {
+      ...transaction,
       id: transaction?.id || generateId(),
       date: dateStr,
       type,
@@ -541,6 +545,7 @@ export function TransactionDialog({
               : 'Selecione um plano rápido ou preencha manualmente.'}
           </DialogDescription>
         </DialogHeader>
+        {activitySelector}
 
         <div className="grid gap-2">
           <Label htmlFor="date">Data</Label>

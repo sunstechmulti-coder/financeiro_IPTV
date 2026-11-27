@@ -25,6 +25,8 @@ export function useSupabaseData() {
   const [revendaGrupos, setRevendaGrupos] = useState<RevendaGrupo[]>([])
   const [loading, setLoading] = useState(true)
   const [userId, setUserId] = useState<string | null>(null)
+  const [activitySchemaReady, setActivitySchemaReady] = useState(false)
+  const [canUsePrinting, setCanUsePrinting] = useState(false)
   const isMounted = useRef(false)
 
   const supabase = useMemo(() => createClient(), [])
@@ -40,6 +42,8 @@ export function useSupabaseData() {
     if (!user) {
       if (isMounted.current) {
         setUserId(null)
+        setActivitySchemaReady(false)
+        setCanUsePrinting(false)
         setTransactions([])
         setServidores([])
         setPlanos([])
@@ -54,6 +58,15 @@ export function useSupabaseData() {
     }
 
     if (isMounted.current) setUserId(user.id)
+
+    const [{ error: activitySchemaError }, { data: administrator }] = await Promise.all([
+      supabase.from('transactions').select('activity,printing_details').limit(0),
+      supabase.rpc('is_admin'),
+    ])
+    if (isMounted.current) {
+      setActivitySchemaReady(!activitySchemaError)
+      setCanUsePrinting(administrator === true)
+    }
 
     const fetchAllRowsByUser = async (
       table: string,
@@ -191,6 +204,7 @@ export function useSupabaseData() {
     transaction: Omit<Transaction, 'id' | 'createdAt'>
   ): Promise<Transaction | null> => {
     if (!userId) return null
+    if (transaction.activity === 'printing_3d' && (!activitySchemaReady || !canUsePrinting)) return null
 
     const { data, error } = await supabase
       .from('transactions')
@@ -205,6 +219,10 @@ export function useSupabaseData() {
         unit_cost_snapshot: transaction.unitCostSnapshot ?? null,
         cost_snapshot: transaction.costSnapshot ?? null,
         profit_snapshot: transaction.profitSnapshot ?? null,
+        ...(activitySchemaReady ? {
+          activity: transaction.activity ?? 'iptv',
+          printing_details: transaction.activity === 'printing_3d' ? transaction.printingDetails ?? null : null,
+        } : {}),
       })
       .select()
       .single()
@@ -218,6 +236,7 @@ export function useSupabaseData() {
 
   const updateTransaction = async (transaction: Transaction): Promise<Transaction | null> => {
     if (!userId) return null
+    if (transaction.activity === 'printing_3d' && (!activitySchemaReady || !canUsePrinting)) return null
 
     const { data, error } = await supabase
       .from('transactions')
@@ -231,6 +250,10 @@ export function useSupabaseData() {
         unit_cost_snapshot: transaction.unitCostSnapshot ?? null,
         cost_snapshot: transaction.costSnapshot ?? null,
         profit_snapshot: transaction.profitSnapshot ?? null,
+        ...(activitySchemaReady ? {
+          activity: transaction.activity ?? null,
+          printing_details: transaction.activity === 'printing_3d' ? transaction.printingDetails ?? null : null,
+        } : {}),
       })
       .eq('id', transaction.id)
       .eq('user_id', userId)
@@ -727,6 +750,9 @@ export function useSupabaseData() {
     // Refresh
     refreshData: fetchAllData,
 
+    activitySchemaReady,
+    canUsePrinting,
+
     // Transaction operations
     addTransaction,
     updateTransaction,
@@ -780,6 +806,8 @@ function mapTransactionFromDB(data: any): Transaction {
     description: data.description,
     amount: data.amount,
     createdAt: data.created_at,
+    activity: data.activity === 'iptv' || data.activity === 'printing_3d' ? data.activity : null,
+    printingDetails: data.printing_details ?? null,
     serverId: data.server_id,
     creditsDelta: data.credits_delta,
     unitCostSnapshot: data.unit_cost_snapshot,

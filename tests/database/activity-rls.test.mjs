@@ -120,7 +120,7 @@ test('atividade e RLS preservam IPTV e restringem 3D ao administrador', async (t
     }
 
     await t.test('histórico, timestamps, valores, snapshots e saldos não mudam', async () => {
-      const after = await db.query("SELECT to_jsonb(t) - 'activity' AS row FROM public.transactions t ORDER BY id")
+      const after = await db.query("SELECT to_jsonb(t) - 'activity' - 'printing_details' AS row FROM public.transactions t ORDER BY id")
       assert.deepEqual(after.rows, before)
       assert.equal((await db.query('SELECT count(*)::int AS n FROM public.transactions WHERE activity IS NOT NULL')).rows[0].n, 0)
       assert.deepEqual((await db.query('SELECT * FROM public.servidores ORDER BY id')).rows, balancesBefore)
@@ -204,6 +204,32 @@ test('atividade e RLS preservam IPTV e restringem 3D ao administrador', async (t
         await assert.rejects(asIdentity(adminId, () => insertActivity('printing_3d', adminId, extra)), { code: '23514' })
       })
     }
+
+    await t.test('administrador salva detalhes 3D sem contaminar lançamentos IPTV', () =>
+      asIdentity(adminId, async () => {
+        const tx = (await insertActivity('printing_3d', adminId)).rows[0]
+        const details = { customerName: 'Cliente teste', productName: 'Miniatura', paymentMethod: 'Pix' }
+        const result = await db.query(
+          'UPDATE public.transactions SET printing_details = $1::jsonb WHERE id = $2 RETURNING printing_details',
+          [JSON.stringify(details), tx.id],
+        )
+        assert.deepEqual(result.rows[0].printing_details, details)
+      }),
+    )
+
+    await t.test('IPTV não aceita detalhes reservados ao 3D', async () => {
+      await assert.rejects(asIdentity(adminId, async () => {
+        const tx = (await insertActivity('iptv', adminId)).rows[0]
+        await db.query('UPDATE public.transactions SET printing_details = $1::jsonb WHERE id = $2', ['{}', tx.id])
+      }), { code: '23514' })
+    })
+
+    await t.test('detalhes 3D precisam ser um objeto', async () => {
+      await assert.rejects(asIdentity(adminId, async () => {
+        const tx = (await insertActivity('printing_3d', adminId)).rows[0]
+        await db.query('UPDATE public.transactions SET printing_details = $1::jsonb WHERE id = $2', ['[]', tx.id])
+      }), { code: '23514' })
+    })
 
     await t.test('atividade desconhecida é rejeitada', async () => {
       await assert.rejects(asIdentity(adminId, () => insertActivity('outra', adminId)), { code: '23514' })

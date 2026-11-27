@@ -22,6 +22,15 @@ $preconditions$;
 
 ALTER TABLE public.transactions
   ADD COLUMN activity text,
+  ADD COLUMN printing_details jsonb,
+  ADD CONSTRAINT transactions_printing_details_check
+    CHECK (
+      printing_details IS NULL
+      OR (
+        activity IS NOT DISTINCT FROM 'printing_3d'
+        AND jsonb_typeof(printing_details) = 'object'
+      )
+    ),
   ADD CONSTRAINT transactions_activity_check
     CHECK (activity IN ('iptv', 'printing_3d')),
   ADD CONSTRAINT transactions_printing_3d_without_credits_check

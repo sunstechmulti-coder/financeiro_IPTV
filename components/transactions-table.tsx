@@ -37,6 +37,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
+import { ACTIVITY_LABELS, transactionActivity } from "@/lib/activity";
 import { formatCurrency, formatDate, getMonthYear } from "@/lib/format";
 import type {
   Transaction,
@@ -46,6 +47,7 @@ import type {
 } from "@/lib/types";
 
 interface TransactionsTableProps {
+  showActivity?: boolean;
   transactions: Transaction[];
   servidores?: Servidor[];
   onEdit: (transaction: Transaction) => void;
@@ -101,6 +103,7 @@ function getCreditTextColor(delta: number) {
 export function TransactionsTable({
   transactions,
   servidores = [],
+  showActivity = false,
   onEdit,
   onDelete,
 }: TransactionsTableProps) {
@@ -134,7 +137,7 @@ export function TransactionsTable({
         return false;
       if (filterDate && t.date !== filterDate) return false;
       const serverName = getTransactionServerName(t, servidores);
-      const searchText = `${t.description} ${serverName}`.toLowerCase();
+      const searchText = `${t.description} ${serverName} ${t.printingDetails?.customerName || ""} ${t.printingDetails?.productName || ""} ${t.printingDetails?.category || ""} ${t.printingDetails?.paymentMethod || ""}`.toLowerCase();
       if (search && !searchText.includes(search.toLowerCase())) return false;
       return true;
     })
@@ -206,10 +209,11 @@ export function TransactionsTable({
       "Créditos",
       "Saldo",
     ];
+    if (showActivity) headers.push("Atividade", "Cliente", "Peça / produto", "Categoria", "Pagamento");
     const rows = filteredTransactions.map((t) => {
       const creditsDelta = getTransactionCreditsDelta(t);
 
-      return [
+      const row = [
         formatDate(t.date),
         t.type === "income" ? "Entrada" : "Saída",
         t.description,
@@ -218,9 +222,12 @@ export function TransactionsTable({
         creditsDelta === 0 ? "" : formatCreditsDelta(creditsDelta),
         (balances.get(t.id) || 0).toFixed(2).replace(".", ","),
       ];
+      return showActivity ? [...row, ACTIVITY_LABELS[transactionActivity(t)],
+        t.printingDetails?.customerName || "", t.printingDetails?.productName || "",
+        t.printingDetails?.category || "", t.printingDetails?.paymentMethod || ""] : row;
     });
 
-    const csv = [headers, ...rows].map((row) => row.join(";")).join("\n");
+    const csv = [headers, ...rows].map((row) => row.map(value => '"' + String(value).replaceAll('"', '""') + '"').join(";")).join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -317,6 +324,10 @@ export function TransactionsTable({
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-semibold">
                         {transaction.description}
+                        {showActivity && <span className="mt-1 block truncate text-xs font-normal text-muted-foreground">
+                          {ACTIVITY_LABELS[transactionActivity(transaction)]}
+                          {transaction.printingDetails?.customerName ? ' · ' + transaction.printingDetails.customerName : ''}
+                        </span>}
                       </div>
 
                       <div className="mt-2">
@@ -491,6 +502,10 @@ export function TransactionsTable({
                       </TableCell>
                       <TableCell className="max-w-[200px] truncate">
                         {transaction.description}
+                        {showActivity && <span className="mt-1 block truncate text-xs font-normal text-muted-foreground">
+                          {ACTIVITY_LABELS[transactionActivity(transaction)]}
+                          {transaction.printingDetails?.customerName ? ' · ' + transaction.printingDetails.customerName : ''}
+                        </span>}
                       </TableCell>
                       <TableCell
                         className={cn(

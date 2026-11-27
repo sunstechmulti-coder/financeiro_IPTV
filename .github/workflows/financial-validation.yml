@@ -17,3 +17,28 @@ jobs:
         run: npm --prefix tests/database install --ignore-scripts --no-audit --no-fund
       - name: Test database compatibility and access
         run: npm --prefix tests/database test
+  application:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: build-test-key
+      NEXT_TELEMETRY_DISABLED: '1'
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Install the pinned package manager
+        run: npm install --global pnpm@10.11.0
+      - name: Install the existing locked application dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Test activity filters and financial reconciliation
+        run: node --experimental-strip-types --test tests/activity.test.mjs
+      - name: Check TypeScript against the existing baseline
+        run: node scripts/check-types.mjs
+      - name: Build the application without production credentials
+        run: pnpm build
